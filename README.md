@@ -138,4 +138,4 @@ Aufbau: `cmd/smmyp` (Binary), `internal/` (`store`, `auth`, `providers`, `prompt
 
 ## Lizenz
 
-Noch nicht festgelegt (alle Rechte vorbehalten). Die Schrift IBM Plex steht unter der SIL Open Font License (`internal/web/static/fonts/OFL.txt`).
+[MIT](LICENSE). Die Schrift IBM Plex steht unter der SIL Open Font License (`internal/web/static/fonts/OFL.txt`).

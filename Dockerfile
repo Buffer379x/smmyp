@@ -16,7 +16,8 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
 FROM gcr.io/distroless/static-debian12:nonroot
 LABEL org.opencontainers.image.title="SMMYP" \
       org.opencontainers.image.description="Show Me My Prompts – Prompt-Archiv für das Heimnetz" \
-      org.opencontainers.image.source="https://github.com/Buffer379x/smmyp"
+      org.opencontainers.image.source="https://github.com/Buffer379x/smmyp" \
+      org.opencontainers.image.licenses="MIT"
 COPY --from=build /out/smmyp /smmyp
 # /data gehört bereits dem nonroot-Benutzer: Named Volumes funktionieren ohne chown.
 COPY --from=build --chown=65532:65532 /out/data /data
