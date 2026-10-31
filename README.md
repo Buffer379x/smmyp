@@ -35,15 +35,19 @@ docker compose logs smmyp | grep setup_token     # Setup-Token für die Ersteinr
 
 Dann `http://<server-ip>:8080` öffnen, das Token eingeben und das erste Konto anlegen. Es wird Admin. Weitere Personen lädst du unter **Menü → Verwaltung → Einladungslink** ein.
 
-> Solange das Repository privat ist, ist auch das Image auf GHCR privat. Melde dich dann vorher einmal an: `docker login ghcr.io` (Benutzername + GitHub-Token mit `read:packages`).
-
 ## Unraid
 
-Das Template liegt unter [`unraid/smmyp.xml`](unraid/smmyp.xml).
+Das Template liegt unter [`unraid/smmyp.xml`](unraid/smmyp.xml). Zwei Wege:
 
-1. Template auf den Server kopieren: `/boot/config/plugins/dockerMan/templates-user/my-smmyp.xml`
-2. **Docker → Add Container → Template: smmyp** wählen und Pfad/Port prüfen.
-3. Nach dem Start unter **Logs** das `setup_token` ablesen und die WebUI öffnen.
+- **Template-Repository:** *Docker → Template Repositories* um `https://github.com/Buffer379x/smmyp` ergänzen, speichern, dann *Add Container → Template: SMMYP*.
+- **Manuell:** Auf dem Unraid-Server
+  `wget -O /boot/config/plugins/dockerMan/templates-user/my-SMMYP.xml https://raw.githubusercontent.com/Buffer379x/smmyp/main/unraid/smmyp.xml`
+  ausführen, danach *Docker → Add Container → Template: SMMYP*.
+
+Danach:
+
+1. Pfad und Port prüfen, *Apply*.
+2. Nach dem Start unter **Logs** das `setup_token` ablesen und die WebUI öffnen.
 
 Das Template startet den Container mit `--user 0:0` und `PUID=99`/`PGID=100`. SMMYP setzt die Rechte des appdata-Ordners auf `nobody:users` und gibt root sofort danach ab. Die Datenbank gehört am besten auf den Cache/Pool (`/mnt/cache/appdata/smmyp`), nicht über `/mnt/user` aufs Array (FUSE). SMMYP warnt im Log, wenn es so ein Dateisystem erkennt.
 

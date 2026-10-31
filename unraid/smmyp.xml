@@ -23,7 +23,7 @@ Hinweis: Der Container startet als root (--user 0:0), setzt die Rechte auf dem a
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires>Docker-Image von ghcr.io: Solange das GitHub-Repository privat ist, vorher auf dem Unraid-Server einmalig "docker login ghcr.io" mit einem GitHub-Token (Recht read:packages) ausführen.</Requires>
+  <Requires/>
   <Config Name="WebUI-Port" Target="8080" Default="8080" Mode="tcp" Description="Port der Weboberfläche." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
   <Config Name="Daten (appdata)" Target="/data" Default="/mnt/user/appdata/smmyp" Mode="rw" Description="Datenbank und Backups. Empfohlen auf Cache/Pool, z. B. /mnt/cache/appdata/smmyp. Kein Netzlaufwerk." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/smmyp</Config>
   <Config Name="Zeitzone" Target="TZ" Default="Europe/Berlin" Mode="" Description="Zeitzone für Backups und Zeitangaben." Type="Variable" Display="always" Required="false" Mask="false">Europe/Berlin</Config>
