@@ -1,0 +1,43 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1 class="h1">Anbieter</h1>
+<p class="hint">Globale Anbieter pflegt der Admin. Eigene Anbieter siehst nur du. Leere Anbieter erscheinen nicht in den Schubladen.</p>
+<div class="table-wrap">
+<table class="ptable">
+  <thead><tr><th>Anbieter</th><th>Kurzname</th><th>Kategorie</th><th>Felder</th><th>Prompts</th><th></th></tr></thead>
+  <tbody>
+  {{range $d.Providers}}
+    <tr>
+      <td><i class="mtab t-{{.Color}}"></i>{{.Name}}{{if not .Global}} <small>(eigener)</small>{{end}}</td>
+      <td><code>@{{.Slug}}</code></td>
+      <td>{{catLabel .Category}}</td>
+      <td>{{range $i, $f := .Fields}}{{if $i}}, {{end}}{{$f.Label}}{{end}}</td>
+      <td>{{index $d.Counts .ID}}</td>
+      <td>{{if or (not .Global) $.User.Admin}}{{if eq (index $d.Counts .ID) 0}}<form method="post" action="/providers/{{.ID}}/delete" data-confirm="Anbieter {{.Name}} löschen?"><button class="btn btn-ghost btn-sm" type="submit">Löschen</button></form>{{end}}{{end}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<section class="panel">
+  <h2 class="h2">Neuer Anbieter</h2>
+  <form method="post" action="/providers" class="stack">
+    <div class="two">
+      <label>Name<input name="name" required maxlength="60" value="{{.Form.Get "name"}}" placeholder="z. B. Leonardo"></label>
+      <label>Kurzname für die Suche <small>(optional)</small><input name="slug" maxlength="40" value="{{.Form.Get "slug"}}" placeholder="leonardo"></label>
+    </div>
+    {{template "err" (index .Errors "name")}}{{template "err" (index .Errors "slug")}}
+    <div class="two">
+      <label>Kategorie<select name="category">{{range $d.Categories}}<option value="{{.Key}}"{{if eq ($.Form.Get "category") .Key}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+      <label>Reiterfarbe<select name="color">{{range $d.Colors}}<option value="{{.}}"{{if eq ($.Form.Get "color") .}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+    </div>
+    <fieldset class="seg-field"><legend>Felder</legend>
+      {{range $d.Catalog}}<label><input type="checkbox" name="fields" value="{{.Key}}"{{if eq .Key "prompt"}} checked{{end}}> {{.Label}}</label>{{end}}
+    </fieldset>
+    {{template "err" (index .Errors "fields")}}
+    <label>Hauptfeld (wird mit „Kopieren" kopiert)<select name="primary">{{range $d.Catalog}}<option value="{{.Key}}">{{.Label}}</option>{{end}}</select></label>
+    {{if .User.Admin}}<label class="check"><input type="checkbox" name="global" value="1"> Für alle Benutzer (global)</label>{{end}}
+    <button class="btn btn-signal" type="submit">Anbieter anlegen</button>
+  </form>
+</section>
+{{end}}

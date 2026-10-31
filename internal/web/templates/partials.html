@@ -1,0 +1,109 @@
+{{define "err"}}{{with .}}<p class="err">{{.}}</p>{{end}}{{end}}
+
+{{define "favbtn"}}<form method="post" action="/p/{{.ID}}/fav" class="js-fav"><button type="submit" class="star{{if .Favorite}} is-on{{end}}" aria-pressed="{{.Favorite}}" aria-label="Favorit" title="Favorit (f)"><svg width="18" height="18" aria-hidden="true"><use class="star-on" href="#i-star"/><use class="star-off" href="#i-star-o"/></svg></button></form>{{end}}
+
+{{define "card"}}
+<article class="card" data-nav data-href="{{.URL}}" data-id="{{.ID}}" data-ctx="{{.ContextSlug}}" tabindex="0">
+  <div class="tabs">{{range .Tabs}}<span class="tab t-{{.Color}}">{{.Name}}</span>{{end}}{{if .MoreTabs}}<span class="tab tab-more">+{{.MoreTabs}}</span>{{end}}</div>
+  <div class="card-body{{with index .Tabs 0}} t-{{.Color}}{{end}}">
+    <div class="card-head">
+      <div>
+        <h3><a href="{{.URL}}">{{.Title}}</a></h3>
+        <p class="meta">{{with .Model}}{{.}} · {{end}}{{if .LastUsed}}benutzt {{reltime .LastUsed}}{{else}}noch nie benutzt{{end}}</p>
+      </div>
+      {{template "favbtn" .}}
+    </div>
+    {{range .Fields}}
+    <div class="field">
+      <span class="label">{{.Label}}</span>
+      <pre{{if .Primary}} data-primary{{end}}>{{.Value}}</pre>
+      <button type="button" class="mini" data-copy="field" aria-label="{{.Label}} kopieren" title="{{.Label}} kopieren"><svg width="14" height="14" aria-hidden="true"><use href="#i-copy"/></svg></button>
+    </div>
+    {{end}}
+    {{with .Tags}}<ul class="tags">{{range .}}<li{{if .Hit}} class="hit"{{end}}><a href="/?q=%23{{.Slug}}">#{{.Slug}}</a></li>{{end}}</ul>{{end}}
+    <div class="card-foot">
+      <button type="button" class="btn btn-signal copy" data-copy="primary"><svg width="14" height="14" aria-hidden="true"><use href="#i-copy"/></svg>Kopieren</button>
+      <span class="uses">{{.UseCount}}× kopiert</span>
+    </div>
+  </div>
+</article>
+{{end}}
+
+{{define "row"}}
+<li class="row" data-nav data-href="{{.URL}}" data-id="{{.ID}}" data-ctx="{{.ContextSlug}}" tabindex="0">
+  <span class="row-ki">{{range .Tabs}}<i class="mtab t-{{.Color}}"></i>{{end}}<span>{{.Names}}</span></span>
+  <span class="row-main"><a class="row-title" href="{{.URL}}">{{.Title}}</a><span class="row-snip">{{.Snippet}}</span></span>
+  <span class="row-tags">{{range .Tags}}<a href="/?q=%23{{.Slug}}"{{if .Hit}} class="hit"{{end}}>#{{.Slug}}</a> {{end}}</span>
+  <span class="row-uses">{{.UseCount}}×</span>
+  <pre class="sr" data-primary>{{.PrimaryRaw}}</pre>
+  <button type="button" class="mini row-copy" data-copy="primary" aria-label="Kopieren" title="Kopieren (c)"><svg width="14" height="14" aria-hidden="true"><use href="#i-copy"/></svg></button>
+</li>
+{{end}}
+
+{{define "viewtoggle"}}
+<form method="post" action="/prefs" class="viewtoggle" id="view-form">
+  <input type="hidden" name="back" value="{{.Path}}">
+  <button type="submit" name="view" value="cards" class="vt{{if eq .View "cards"}} is-on{{end}}" aria-pressed="{{eq .View "cards"}}" title="Karten (v)"><svg width="16" height="16" aria-hidden="true"><use href="#i-cards"/></svg><span class="sr">Karten</span></button>
+  <button type="submit" name="view" value="list" class="vt{{if eq .View "list"}} is-on{{end}}" aria-pressed="{{eq .View "list"}}" title="Liste (v)"><svg width="16" height="16" aria-hidden="true"><use href="#i-list"/></svg><span class="sr">Liste</span></button>
+</form>
+{{end}}
+
+{{define "results"}}
+{{$d := .Data}}
+<div id="results">
+  <div class="results-head">
+    <div>
+      <h1 class="h1">{{if $d.Context}}{{$d.Context.Name}}{{else if $d.Favorites}}Favoriten{{else if $d.HasQuery}}Suche{{else}}Alle Prompts{{end}}
+        <span class="count">{{$d.Total}} {{if eq $d.Total 1}}Prompt{{else}}Prompts{{end}}</span></h1>
+      {{with $d.Unknown}}<p class="hint">Unbekannter Anbieter: {{join . ", "}}</p>{{end}}
+    </div>
+    {{template "viewtoggle" .}}
+  </div>
+  {{if not $d.Onboarding}}
+  <p class="hint syntax"><b>@suno</b> Anbieter · <b>#tag</b> Tag · <b>"…"</b> Phrase · <b>-wort</b> ausschließen · <b>fav:</b> Favoriten · <b>/</b> Suche · <b>v</b> Ansicht</p>
+  {{end}}
+  {{if gt (len $d.Facets) 0}}
+  <div class="facets" title="Ein Prompt mit mehreren Anbietern zählt bei jedem davon. „Alle“ zählt ihn einmal.">
+    <a class="facet{{if $d.AllActive}} is-on{{end}}" href="{{$d.AllURL}}">Alle · {{$d.FacetTotal}}</a>
+    {{range $d.Facets}}<a class="facet t-{{.Color}}{{if .Active}} is-on{{end}}" href="{{.URL}}"><i></i>{{.Name}} · {{.Count}}</a>{{end}}
+  </div>
+  {{end}}
+  {{if not $d.Grouped}}{{if gt $d.Total 1}}
+  <div class="sorts" aria-label="Sortierung">{{range $d.SortLinks}}<a href="{{.URL}}"{{if .Active}} class="is-on" aria-current="true"{{end}}>{{.Label}}</a>{{end}}</div>
+  {{end}}{{end}}
+
+  {{if $d.Onboarding}}
+    <div class="empty">
+      <h2>Die Schubladen sind noch leer.</h2>
+      <p>Lege deinen ersten Prompt an: einen Suno-Style, einen Claude-Auftrag oder ein Midjourney-Bild. Er landet automatisch in der passenden Schublade.</p>
+      <a class="btn btn-signal" href="/p/new">Ersten Prompt anlegen</a>
+    </div>
+  {{else if eq $d.Total 0}}
+    <div class="empty">
+      <h2>{{if $d.HasQuery}}Keine Treffer.{{else}}Hier liegt noch nichts.{{end}}</h2>
+      <p>{{if $d.HasQuery}}Probier einen kürzeren Begriff, entferne Filter oder suche über alle KIs.{{else}}Lege einen Prompt für diese Schublade an.{{end}}</p>
+      <a class="btn" href="{{$d.NewURL}}">Neuer Prompt</a>
+    </div>
+  {{else if $d.Grouped}}
+    {{range $d.Groups}}
+      <section class="group">
+        <h2 class="group-h t-{{.Color}}"><i></i><a href="/?a={{.Slug}}">{{.Name}}</a> <span>{{.Count}}</span></h2>
+        {{if .Cards}}<div class="grid">{{range .Cards}}{{template "card" .}}{{end}}</div>{{end}}
+        {{with .Refs}}<ul class="refs">{{range .}}<li><a href="{{.URL}}">→ {{.Title}}</a> <span>liegt auch bei {{.ShownIn}}</span></li>{{end}}</ul>{{end}}
+        {{if .MoreURL}}<p class="more"><a href="{{.MoreURL}}">Alle {{.Count}} bei {{.Name}} anzeigen →</a></p>{{end}}
+      </section>
+    {{end}}
+  {{else if eq $.View "list"}}
+    <ul class="list">{{range $d.Cards}}{{template "row" .}}{{end}}</ul>
+  {{else}}
+    <div class="grid">{{range $d.Cards}}{{template "card" .}}{{end}}</div>
+  {{end}}
+  {{if or $d.PrevURL $d.NextURL}}
+  <nav class="pager" aria-label="Seiten">
+    {{with $d.PrevURL}}<a href="{{.}}">← Zurück</a>{{end}}
+    <span>{{$d.From}}–{{$d.To}} von {{$d.Total}}</span>
+    {{with $d.NextURL}}<a href="{{.}}">Weiter →</a>{{end}}
+  </nav>
+  {{end}}
+</div>
+{{end}}

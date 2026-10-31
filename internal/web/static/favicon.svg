@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <style>.b{fill:#F3EDE2}.c{fill:#1F1A16}.e{stroke:#F3EDE2}.p{fill:#E4572E}@media (prefers-color-scheme:dark){.b{fill:#16130F}.c{fill:#EFE7DA}.e{stroke:#16130F}.p{fill:#D9461F}}</style>
+  <rect class="b" width="64" height="64"/>
+  <path d="M41 19V8.5a5 5 0 0 1 5-5h7.5a5 5 0 0 1 5 5V19z" fill="#B8862F"/>
+  <path d="M20.5 19V8.5a5 5 0 0 1 5-5h7.5a5 5 0 0 1 5 5V19z" fill="#2D6E7E"/>
+  <path class="c" d="M0 64V13a5 5 0 0 1 5-5h7.5a5 5 0 0 1 5 5v1.5a2.5 2.5 0 0 0 2.5 2.5H64v47z"/>
+  <path class="e" d="M9.7 40.5q22.3-19.8 44.6 0q-22.3 19.8-44.6 0z" fill="none" stroke-width="5.5" stroke-linejoin="round"/>
+  <rect class="p" x="27" y="33.5" width="10" height="14" rx="2"/>
+</svg>

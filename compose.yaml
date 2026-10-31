@@ -1,0 +1,23 @@
+# SMMYP im Heimnetz. Start: docker compose up -d
+# Das Setup-Token für die Ersteinrichtung steht im Log: docker compose logs smmyp
+services:
+  smmyp:
+    image: ghcr.io/buffer379x/smmyp:latest
+    container_name: smmyp
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - smmyp-data:/data          # Named Volume: keine Rechteprobleme. Kein NFS/SMB verwenden!
+    environment:
+      TZ: "Europe/Berlin"
+      # SMMYP_BASE_URL: "https://prompts.home.example.org"   # wenn ein Reverse Proxy mit HTTPS davor sitzt
+      # SMMYP_ALLOWED_HOSTS: "nas.local"                     # Hostnamen, unter denen du SMMYP aufrufst (IPs sind immer erlaubt)
+      # SMMYP_TRUSTED_PROXIES: "172.16.0.0/12"               # Netz des Reverse Proxys (für echte Client-IPs)
+    read_only: true
+    security_opt:
+      - "no-new-privileges:true"
+    mem_limit: 128m
+
+volumes:
+  smmyp-data:

@@ -1,0 +1,137 @@
+# SMMYP – Show Me My Prompts
+
+<img src="unraid/smmyp-icon.png" alt="SMMYP" width="96" align="right">
+
+Ein kleines, schnelles Prompt-Archiv für dein Heimnetz. SMMYP sammelt deine KI-Prompts (Suno-Styles, Claude-Aufträge, Midjourney-Bilder …), macht sie durchsuchbar und listet sie **nach KI gruppiert** wieder auf. Ein Klick kopiert den Prompt in die Zwischenablage.
+
+- **Karteikasten statt Chatblase:** Jede KI ist eine Schublade mit farbigem Reiter, jeder Prompt eine Karteikarte. Karten- oder Listenansicht, hell oder dunkel.
+- **Ein Prompt, mehrere KIs:** Ein Prompt kann zu einem oder mehreren Anbietern gehören. Die Felder richten sich nach dem Anbieter: Suno Style/Lyrics/Exclude, Midjourney Prompt/Parameter, Claude System/Prompt. Jedes Feld hat einen eigenen Kopier-Button.
+- **Suche über alles oder gezielt:** `@suno dark #lofi "night drive" -country`, mit Live-Ergebnissen, Facetten je KI und markierten Treffern.
+- **Multiuser:** Private Sammlungen je Konto, neue Konten per Einladungslink.
+- **Klein:** ein Go-Binary mit SQLite und ohne externe Dienste. Docker-Image ~20 MB, im Leerlauf < 40 MB RAM. Keine Verbindungen ins Internet.
+
+> **Stand 0.1-rc1:** Release-Kandidat. Siehe [Stand 0.1-rc1](#stand-01-rc1) für das, was noch fehlt.
+
+## Schnellstart (Docker Compose)
+
+```yaml
+services:
+  smmyp:
+    image: ghcr.io/buffer379x/smmyp:latest
+    restart: unless-stopped
+    ports: ["8080:8080"]
+    volumes: ["smmyp-data:/data"]
+    environment:
+      TZ: "Europe/Berlin"
+    read_only: true
+volumes:
+  smmyp-data:
+```
+
+```sh
+docker compose up -d
+docker compose logs smmyp | grep setup_token     # Setup-Token für die Ersteinrichtung
+```
+
+Dann `http://<server-ip>:8080` öffnen, das Token eingeben und das erste Konto anlegen. Es wird Admin. Weitere Personen lädst du unter **Menü → Verwaltung → Einladungslink** ein.
+
+> Solange das Repository privat ist, ist auch das Image auf GHCR privat. Melde dich dann vorher einmal an: `docker login ghcr.io` (Benutzername + GitHub-Token mit `read:packages`).
+
+## Unraid
+
+Das Template liegt unter [`unraid/smmyp.xml`](unraid/smmyp.xml).
+
+1. Template auf den Server kopieren: `/boot/config/plugins/dockerMan/templates-user/my-smmyp.xml`
+2. **Docker → Add Container → Template: smmyp** wählen und Pfad/Port prüfen.
+3. Nach dem Start unter **Logs** das `setup_token` ablesen und die WebUI öffnen.
+
+Das Template startet den Container mit `--user 0:0` und `PUID=99`/`PGID=100`. SMMYP setzt die Rechte des appdata-Ordners auf `nobody:users` und gibt root sofort danach ab. Die Datenbank gehört am besten auf den Cache/Pool (`/mnt/cache/appdata/smmyp`), nicht über `/mnt/user` aufs Array (FUSE). SMMYP warnt im Log, wenn es so ein Dateisystem erkennt.
+
+## Konfiguration
+
+| Variable | Standard | Zweck |
+|---|---|---|
+| `SMMYP_LISTEN` | `:8080` | Adresse und Port |
+| `SMMYP_DATA_DIR` | `/data` | Datenbank und Backups |
+| `SMMYP_BASE_URL` | – | Adresse, unter der SMMYP aufgerufen wird (bei Reverse Proxy mit HTTPS) |
+| `SMMYP_ALLOWED_HOSTS` | – | Zusätzliche Hostnamen (Komma-getrennt, `*.fritz.box` erlaubt). IP-Adressen, `localhost` und der Host aus `SMMYP_BASE_URL` sind immer erlaubt. Schutz vor DNS-Rebinding |
+| `SMMYP_SECURE_COOKIES` | `auto` | `true` bei `https://`-Basis-URL |
+| `SMMYP_TRUSTED_PROXIES` | – | CIDR des Reverse Proxys (für echte Client-IPs) |
+| `SMMYP_REGISTRATION` | `invite` | `invite` · `open` · `closed` |
+| `SMMYP_BACKUP_TIME` | `03:30` | Tägliches Backup, `off` = aus |
+| `SMMYP_BACKUP_KEEP` | `14` | Anzahl aufbewahrter Backups |
+| `SMMYP_ADMIN_USER` / `SMMYP_ADMIN_PASSWORD_FILE` | – | Ersten Admin automatisch anlegen (statt Setup-Token) |
+| `SMMYP_LOG_LEVEL` | `info` | `debug` · `info` · `warn` · `error` |
+| `PUID` / `PGID` | `65532` | Nur wenn als root gestartet: Besitzer des Datenordners, danach wird root abgegeben |
+
+## HTTPS im Heimnetz
+
+SMMYP funktioniert auch über reines HTTP. Browser erlauben einige Funktionen aber nur über HTTPS: die moderne Zwischenablage (SMMYP nutzt dann einen Fallback) und künftig die App-Installation (PWA). Wege dorthin, ohne etwas ins Internet freizugeben:
+
+1. **Eigene Domain + Let's Encrypt per DNS-Challenge** (Caddy, Traefik, Nginx Proxy Manager) und ein lokaler DNS-Eintrag im Router oder in Pi-hole. Empfohlen.
+2. **Tailscale** mit MagicDNS und `tailscale cert`
+3. **Eigene Zertifizierungsstelle** (Caddy `tls internal`, mkcert). Das Root-Zertifikat muss dann auf jedem Gerät installiert werden.
+
+Hinter dem Proxy `SMMYP_BASE_URL=https://…` und `SMMYP_TRUSTED_PROXIES` setzen.
+
+## Bedienung
+
+| Taste | Aktion |
+|---|---|
+| `/` | Suche |
+| `Esc` | Suche leeren |
+| `j` / `k` | nächste / vorige Karte |
+| `Enter` | öffnen |
+| `c` | kopieren |
+| `f` | Favorit |
+| `n` | neuer Prompt |
+| `v` | Karten ↔ Liste |
+
+| Suche | Bedeutung |
+|---|---|
+| `night drive` | beide Wörter, als Präfix (`nig` findet „night") |
+| `"night drive"` | exakte Phrase |
+| `@suno` | nur Suno (mehrere `@…` = einer davon) |
+| `#lofi` | mit Tag (mehrere = alle) |
+| `-country` | ohne dieses Wort |
+| `kat:musik` | alle Musik-KIs |
+| `fav:` · `used:7d` | Favoriten · in den letzten 7 Tagen benutzt |
+
+## Backup & Wiederherstellung
+
+- Automatisch täglich nach `/data/backups` (konsistenter Schnappschuss per `VACUUM INTO`), die letzten 14 werden aufbewahrt. Vor jeder Schema-Migration entsteht zusätzlich ein Backup.
+- Manuell: **Verwaltung → Backup jetzt** oder `docker exec smmyp /smmyp backup`
+- **Wiederherstellen:** Container stoppen, `smmyp.db` im Datenordner durch das Backup ersetzen (die Dateien `smmyp.db-wal` und `smmyp.db-shm` löschen), Container starten.
+- Export der eigenen Prompts als JSON: **Menü → Export**
+
+## Befehle
+
+```sh
+docker exec smmyp /smmyp backup            # Backup jetzt
+docker exec smmyp /smmyp reindex           # Suchindex neu aufbauen
+echo 'neues-passwort-123' | docker exec -i smmyp /smmyp passwd <name>   # Passwort zurücksetzen
+docker exec smmyp /smmyp version
+```
+
+## Stand 0.1-rc1
+
+Enthalten: siehe [CHANGELOG](CHANGELOG.md). Noch nicht enthalten (geplant für Phase 2):
+
+- Platzhalter-Variablen `{{genre}}`, Versionen/Diff, Import
+- Auto-Tagging (eingebautes Machine Learning, ohne API), Tag-Aliase, Teilwortsuche (Trigramme)
+- Sammlungen, PWA/„Teilen →", Bookmarklet, Mehrfachauswahl, Proxy-Login (SSO)
+
+## Entwicklung
+
+```sh
+go test ./...                          # Unit-, Integrations- und HTTP-Tests
+go test -run XXX -bench Search10k ./internal/prompts   # Suche bei 10.000 Prompts
+SMMYP_DATA_DIR=./tmp SMMYP_LISTEN=127.0.0.1:8080 go run ./cmd/smmyp
+docker build -t smmyp:dev --build-arg VERSION=dev .
+```
+
+Aufbau: `cmd/smmyp` (Binary), `internal/` (`store`, `auth`, `providers`, `prompts`, `search`, `tags`, `backup`, `web`). Templates, CSS, JS und Schriften sind eingebettet.
+
+## Lizenz
+
+Noch nicht festgelegt (alle Rechte vorbehalten). Die Schrift IBM Plex steht unter der SIL Open Font License (`internal/web/static/fonts/OFL.txt`).

@@ -1,0 +1,56 @@
+{{define "content"}}
+{{$d := .Data}}
+<section class="panel">
+  <h1 class="h1">{{.Title}}</h1>
+  {{if $d.Duplicate}}
+  <div class="flash flash-error">Einen inhaltsgleichen Prompt gibt es schon: <a href="/p/{{$d.Duplicate}}">Original ansehen</a>. Unten auf „Trotzdem speichern" klicken, um ihn doppelt anzulegen.</div>
+  {{end}}
+  {{template "err" (index .Errors "form")}}
+  <form method="post" action="{{$d.Action}}" class="stack prompt-form" id="prompt-form">
+    {{if $d.Duplicate}}<input type="hidden" name="dup_ok" value="1">{{end}}
+    <label>Titel<input name="title" required maxlength="200" value="{{$d.Title}}" autofocus></label>
+    {{template "err" (index .Errors "title")}}
+
+    <fieldset class="providers-pick">
+      <legend>Anbieter <small>(einer oder mehrere; ● = Hauptanbieter)</small></legend>
+      {{template "err" (index .Errors "providers")}}
+      {{range $d.Categories}}
+      <div class="pick-cat">
+        <p class="rail-cat">{{.Label}}</p>
+        <div class="pick-list">
+        {{range .Providers}}
+          <span class="pick t-{{.Color}}">
+            <label class="pick-check"><input type="checkbox" name="provider" value="{{.ID}}" data-fields="{{.FieldKeys}}"{{if .Checked}} checked{{end}}><i></i>{{.Name}}</label>
+            <label class="pick-primary" title="Als Hauptanbieter festlegen"><input type="radio" name="primary" value="{{.ID}}"{{if .Primary}} checked{{end}}><span class="sr">Hauptanbieter {{.Name}}</span></label>
+          </span>
+        {{end}}
+        </div>
+      </div>
+      {{end}}
+    </fieldset>
+
+    <div class="fields-box">
+      {{template "err" (index .Errors "fields")}}
+      {{range $d.Fields}}
+      <label class="field-row" data-key="{{.Key}}"{{if not .Visible}} hidden{{end}}>{{.Label}}
+        <textarea name="field_{{.Key}}" rows="{{if .Long}}6{{else}}2{{end}}" maxlength="50000" spellcheck="false">{{.Value}}</textarea>
+      </label>
+      {{template "err" (index $.Errors (printf "field_%s" .Key))}}
+      {{end}}
+    </div>
+
+    <div class="two">
+      <label>Tags <small>(Komma-getrennt)</small><input name="tags" value="{{$d.Tags}}" list="tag-hints" autocomplete="off"></label>
+      <label>Modell / Version <small>(optional)</small><input name="model" maxlength="60" value="{{$d.Model}}" placeholder="z. B. v4.5, Opus, v7"></label>
+    </div>
+    {{template "err" (index .Errors "tags")}}
+    <datalist id="tag-hints">{{range $d.TagHints}}<option value="{{.}}">{{end}}</datalist>
+    <label>Notizen <small>(was hat funktioniert?)</small><textarea name="notes" rows="3">{{$d.Notes}}</textarea></label>
+    <label class="check"><input type="checkbox" name="favorite" value="1"{{if $d.Favorite}} checked{{end}}> Favorit</label>
+    <div class="form-actions">
+      <button class="btn btn-signal" type="submit">{{if $d.Duplicate}}Trotzdem speichern{{else}}Speichern{{end}}</button>
+      <a class="btn btn-ghost" href="{{if $d.ID}}/p/{{$d.ID}}{{else}}/{{end}}">Abbrechen</a>
+    </div>
+  </form>
+</section>
+{{end}}

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: vet
+        run: go vet ./...
+      - name: test
+        run: go test -race -count=1 ./...
+      - name: Icon ohne transparenten Rand (TC-UI-08)
+        run: python3 scripts/check_icon_opaque.py unraid/smmyp-icon.png
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build --build-arg VERSION=ci-${GITHUB_SHA::7} -t smmyp:ci .
+      - name: Smoke-Test
+        run: scripts/smoke-test.sh smmyp:ci

@@ -1,0 +1,104 @@
+{{define "base"}}<!doctype html>
+<html lang="de"{{if .Theme}} data-theme="{{.Theme}}"{{end}}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{.Title}} · SMMYP</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css?v={{.Version}}">
+<script src="/static/app.js?v={{.Version}}" defer></script>
+</head>
+<body{{if .Plain}} class="is-plain"{{end}}>
+{{template "sprite"}}
+{{if .Plain}}
+<main class="plain-wrap">
+  <a class="plain-logo" href="/" aria-label="SMMYP Startseite">{{template "logo"}}</a>
+  {{template "flash" .}}
+  {{template "content" .}}
+  <p class="plain-foot">Show Me My Prompts · {{.Version}}</p>
+</main>
+{{else}}
+<div class="app">
+<div class="app-in">
+  <a class="brand" href="/" aria-label="SMMYP Startseite">{{template "logo"}}</a>
+  <form class="searchbar" id="search-form" action="/" method="get" role="search">
+    <div class="searchbox">
+      <svg class="ico" width="16" height="16" aria-hidden="true"><use href="#i-search"/></svg>
+      <label class="sr" for="scope">Bereich</label>
+      <select id="scope" name="a" class="scope">
+        {{- $g := "" -}}
+        {{- range .Scopes -}}
+          {{- if ne .Group $g}}{{if ne $g ""}}</optgroup>{{end}}<optgroup label="{{.Group}}">{{$g = .Group}}{{end -}}
+          <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+        {{- end -}}
+        {{- if ne $g ""}}</optgroup>{{end -}}
+      </select>
+      <label class="sr" for="q">Suche</label>
+      <input id="q" name="q" type="search" value="{{.Q}}" placeholder="Suchen … @suno #tag &#34;Phrase&#34; -wort" autocomplete="off" spellcheck="false">
+      <kbd>/</kbd>
+    </div>
+  </form>
+  <div class="actions">
+    <a class="btn btn-signal btn-new" href="/p/new{{with .Rail}}{{if and .Active (ne .Active "fav") (ne .Active "trash")}}?a={{.Active}}{{end}}{{end}}" data-key="n"><svg width="14" height="14" aria-hidden="true"><use href="#i-plus"/></svg><span>Neuer Prompt</span></a>
+    <details class="menu">
+      <summary class="avatar" aria-label="Menü für {{.User.Username}}">{{initials .User.Username}}</summary>
+      <div class="menu-pop">
+        <p class="menu-who">{{.User.Username}}{{if .User.Admin}} · Admin{{end}}</p>
+        <a href="/settings">Einstellungen</a>
+        <a href="/providers">Anbieter</a>
+        <a href="/trash">Papierkorb</a>
+        <a href="/export.json">Export (JSON)</a>
+        {{if .User.Admin}}<a href="/admin">Verwaltung</a>{{end}}
+        <form method="post" action="/logout"><button type="submit">Abmelden</button></form>
+      </div>
+    </details>
+  </div>
+  {{with .Rail}}
+  <nav class="rail" aria-label="Schubladen">
+    <a class="drawer{{if eq .Active ""}} is-active{{end}}" href="/"><i></i>Alle Prompts<span>{{.AllCount}}</span></a>
+    <a class="drawer drawer-fav{{if eq .Active "fav"}} is-active{{end}}" href="/?fav=1"><i></i>Favoriten<span>{{.Favorites}}</span></a>
+    {{range .Categories}}
+      <p class="rail-cat">{{.Label}}</p>
+      {{range .Drawer}}<a class="drawer t-{{.Color}}{{if eq $.Rail.Active .Slug}} is-active{{end}}" href="/?a={{.Slug}}"><i></i>{{.Name}}<span>{{.Count}}</span></a>{{end}}
+    {{end}}
+    {{with .TopTags}}
+      <p class="rail-cat">Häufige Tags</p>
+      <div class="tagcloud">{{range .}}<a href="/?q=%23{{.Slug}}">#{{.Slug}}</a>{{end}}</div>
+    {{end}}
+    <p class="rail-cat">Ablage</p>
+    <a class="drawer drawer-trash{{if eq .Active "trash"}} is-active{{end}}" href="/trash"><i></i>Papierkorb<span>{{.Trash}}</span></a>
+  </nav>
+  <nav class="chips" aria-label="Schubladen">
+    <a class="chip{{if eq .Active ""}} is-on{{end}}" href="/">Alle {{.AllCount}}</a>
+    {{if .Favorites}}<a class="chip{{if eq .Active "fav"}} is-on{{end}}" href="/?fav=1">★ {{.Favorites}}</a>{{end}}
+    {{range .Categories}}{{range .Drawer}}<a class="chip t-{{.Color}}{{if eq $.Rail.Active .Slug}} is-on{{end}}" href="/?a={{.Slug}}"><i></i>{{.Name}} {{.Count}}</a>{{end}}{{end}}
+  </nav>
+  {{end}}
+  <main class="main" id="main">
+    {{template "flash" .}}
+    {{template "content" .}}
+  </main>
+</div>
+</div>
+{{end}}
+<p class="sr" aria-live="polite" id="live"></p>
+</body>
+</html>
+{{end}}
+
+{{define "flash"}}{{if .Flash}}<p class="flash flash-{{.FlashKind}}" role="status">{{.Flash}}</p>{{end}}{{end}}
+
+{{define "logo"}}<svg class="logo-mark" viewBox="6 7 52 49" aria-hidden="true"><path class="lm-t2" d="M39 22V11a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v11z"/><path class="lm-t1" d="M22.5 22V11a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v11z"/><path class="lm-card" d="M6 15a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v1a2 2 0 0 0 2 2h32a4 4 0 0 1 4 4v30a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4z"/><path class="lm-eye" d="M14 37q18-16 36 0q-18 16-36 0z"/><rect class="lm-pupil" x="28.5" y="32" width="7" height="10" rx="1.5"/></svg><svg class="logo-word" viewBox="-2 7 160 43" role="img" aria-label="smmyp"><g class="lw"><path d="M17 13C15 10.5 12 10 9 10C4 10 1.5 12.5 1.5 16C1.5 20 5 21 9 22C13.5 23 17 24.5 17 28.5C17 32 14 34 9 34C5.5 34 2.5 33 1 30.5"/><path d="M28 34V16C28 12.5 31 10 35 10C39 10 42 12.5 42 16V34M42 16C42 12.5 45 10 49 10C53 10 56 12.5 56 16V34"/><path d="M67 34V16C67 12.5 70 10 74 10C78 10 81 12.5 81 16V34M81 16C81 12.5 84 10 88 10C92 10 95 12.5 95 16V34"/><path d="M106 10V24C106 30 109 34 115 34C121 34 124 30 124 24M124 10V40C124 45 120 47 115 47C111 47 108.5 45.5 107 43.5"/><path d="M135 47V10M135 22C135 15 139 10 145 10C151 10 154.5 15 154.5 22C154.5 29 151 34 145 34C139 34 135 29 135 22Z"/></g></svg>{{end}}
+
+{{define "sprite"}}<svg width="0" height="0" class="sprite" aria-hidden="true">
+<symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 20 20"/></g></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></g></symbol>
+<symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+<symbol id="i-star-o" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+<symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+<symbol id="i-cards" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></g></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+</svg>{{end}}

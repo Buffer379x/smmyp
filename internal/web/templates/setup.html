@@ -1,0 +1,17 @@
+{{define "content"}}
+<section class="panel narrow">
+  <h1 class="h1">Einrichtung</h1>
+  <p>Lege das erste Konto an. Es wird Admin dieser Instanz.</p>
+  <p class="hint">Das Setup-Token steht im Container-Log (<code>docker logs smmyp</code>). So kann niemand anderes im Heimnetz zuerst den Admin anlegen.</p>
+  {{template "err" (index .Errors "form")}}
+  <form method="post" action="/setup" class="stack">
+    <label>Setup-Token<input name="token" required autocomplete="off" spellcheck="false" value="{{.Form.Get "token"}}"></label>
+    {{template "err" (index .Errors "token")}}
+    <label>Benutzername<input name="username" autocomplete="username" required value="{{.Form.Get "username"}}"></label>
+    {{template "err" (index .Errors "username")}}
+    <label>Passwort <small>(mindestens 10 Zeichen)</small><input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
+    {{template "err" (index .Errors "password")}}
+    <button class="btn btn-signal" type="submit">Konto anlegen</button>
+  </form>
+</section>
+{{end}}

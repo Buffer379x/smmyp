@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>SMMYP</Name>
+  <Repository>ghcr.io/buffer379x/smmyp:latest</Repository>
+  <Registry>https://github.com/Buffer379x/smmyp/pkgs/container/smmyp</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Buffer379x/smmyp/issues</Support>
+  <Project>https://github.com/Buffer379x/smmyp</Project>
+  <Overview>SMMYP – Show Me My Prompts. Sammelt deine KI-Prompts (Suno, Claude, Midjourney, ChatGPT …), macht sie durchsuchbar und listet sie nach KI gruppiert auf. Multiuser, SQLite, klein und schnell (~20 MB Image, &lt; 40 MB RAM). Läuft nur im Heimnetz, keine Verbindungen ins Internet.&#xD;
+&#xD;
+Ersteinrichtung: Nach dem Start im Container-Log das Setup-Token suchen (Docker-Menü → Logs) und die WebUI öffnen.&#xD;
+&#xD;
+Hinweis: Der Container startet als root (--user 0:0), setzt die Rechte auf dem appdata-Ordner auf PUID:PGID (Standard 99:100 = nobody:users) und gibt root sofort ab. Die Datenbank am besten auf dem Cache/Pool ablegen (z. B. /mnt/cache/appdata/smmyp), nicht auf dem Array über /mnt/user (FUSE).</Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/Buffer379x/smmyp/main/unraid/smmyp.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Buffer379x/smmyp/main/unraid/smmyp-icon.png</Icon>
+  <ExtraParams>--user 0:0 --read-only --security-opt no-new-privileges:true --memory=128m</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Docker-Image von ghcr.io: Solange das GitHub-Repository privat ist, vorher auf dem Unraid-Server einmalig "docker login ghcr.io" mit einem GitHub-Token (Recht read:packages) ausführen.</Requires>
+  <Config Name="WebUI-Port" Target="8080" Default="8080" Mode="tcp" Description="Port der Weboberfläche." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Daten (appdata)" Target="/data" Default="/mnt/user/appdata/smmyp" Mode="rw" Description="Datenbank und Backups. Empfohlen auf Cache/Pool, z. B. /mnt/cache/appdata/smmyp. Kein Netzlaufwerk." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/smmyp</Config>
+  <Config Name="Zeitzone" Target="TZ" Default="Europe/Berlin" Mode="" Description="Zeitzone für Backups und Zeitangaben." Type="Variable" Display="always" Required="false" Mask="false">Europe/Berlin</Config>
+  <Config Name="Erlaubte Hostnamen" Target="SMMYP_ALLOWED_HOSTS" Default="" Mode="" Description="Hostnamen, unter denen du SMMYP aufrufst, z. B. tower.local (Komma-getrennt; *.fritz.box erlaubt). IP-Adressen sind immer erlaubt. Schutz vor DNS-Rebinding." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Basis-URL" Target="SMMYP_BASE_URL" Default="" Mode="" Description="Optional, wenn ein Reverse Proxy mit HTTPS davor sitzt, z. B. https://prompts.home.example.org" Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="Benutzer-ID, der der appdata-Ordner gehören soll (Unraid: 99 = nobody)." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Gruppen-ID (Unraid: 100 = users)." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+  <Config Name="Backup-Uhrzeit" Target="SMMYP_BACKUP_TIME" Default="03:30" Mode="" Description="Tägliches Backup (HH:MM) nach /data/backups, oder off." Type="Variable" Display="advanced" Required="false" Mask="false">03:30</Config>
+  <Config Name="Anzahl Backups" Target="SMMYP_BACKUP_KEEP" Default="14" Mode="" Description="So viele Backups werden aufbewahrt." Type="Variable" Display="advanced" Required="false" Mask="false">14</Config>
+  <Config Name="Registrierung" Target="SMMYP_REGISTRATION" Default="invite" Mode="" Description="invite = nur mit Einladungslink (empfohlen), open = jeder im Heimnetz, closed = niemand." Type="Variable" Display="advanced" Required="false" Mask="false">invite</Config>
+  <Config Name="Vertrauenswürdige Proxys" Target="SMMYP_TRUSTED_PROXIES" Default="" Mode="" Description="Optional: CIDR des Reverse Proxys (für echte Client-IPs im Log und beim Rate-Limit)." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+</Container>

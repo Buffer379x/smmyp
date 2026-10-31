@@ -1,0 +1,12 @@
+{{define "content"}}
+<section class="panel narrow">
+  <h1 class="h1">Anmelden</h1>
+  {{template "err" (index .Errors "form")}}
+  <form method="post" action="/login" class="stack">
+    <label>Benutzername<input name="username" autocomplete="username" required autofocus value="{{.Form.Get "username"}}"></label>
+    <label>Passwort<input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="btn btn-signal" type="submit">Anmelden</button>
+  </form>
+  {{if .Data}}<p class="hint">Noch kein Konto? <a href="/register">Konto anlegen</a></p>{{end}}
+</section>
+{{end}}

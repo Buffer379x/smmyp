@@ -1,0 +1,40 @@
+{{define "content"}}
+{{$d := .Data}}{{$c := $d.Card}}
+<article class="detail" data-id="{{$c.ID}}" data-ctx="{{$c.ContextSlug}}">
+  <p class="back"><a href="{{$d.BackURL}}">← Zurück</a></p>
+  <div class="tabs">{{range $d.Prompt.Providers}}<a class="tab t-{{.Color}}" href="/p/{{$c.ID}}?a={{.Slug}}">{{.Name}}</a>{{end}}</div>
+  <div class="card-body detail-body{{with index $c.Tabs 0}} t-{{.Color}}{{end}}">
+    <div class="card-head">
+      <div>
+        <h1 class="h1">{{$d.Prompt.Title}}</h1>
+        <p class="meta">{{with $d.Prompt.Model}}{{.}} · {{end}}angelegt {{date $d.Prompt.CreatedAt}} · geändert {{reltime $d.Prompt.UpdatedAt}}</p>
+      </div>
+      {{if not $d.Prompt.DeletedAt}}{{template "favbtn" $c}}{{end}}
+    </div>
+    {{if $d.Prompt.DeletedAt}}<p class="flash flash-error">Liegt im Papierkorb seit {{date $d.Prompt.DeletedAt}}.</p>{{end}}
+    {{range $c.Fields}}
+    <div class="field field-full">
+      <span class="label">{{.Label}}{{if .Primary}} · Hauptfeld{{end}}</span>
+      <pre{{if .Primary}} data-primary{{end}}>{{.Raw}}</pre>
+      <button type="button" class="mini" data-copy="field" aria-label="{{.Label}} kopieren" title="{{.Label}} kopieren"><svg width="14" height="14" aria-hidden="true"><use href="#i-copy"/></svg></button>
+    </div>
+    {{end}}
+    {{with $c.Tags}}<ul class="tags">{{range .}}<li><a href="/?q=%23{{.Slug}}">#{{.Slug}}</a></li>{{end}}</ul>{{end}}
+    {{with $d.Prompt.Notes}}<div class="notes"><span class="label">Notizen</span><p>{{.}}</p></div>{{end}}
+    <div class="card-foot detail-actions">
+      {{if not $d.Prompt.DeletedAt}}
+      <button type="button" class="btn btn-signal copy" data-copy="primary"><svg width="14" height="14" aria-hidden="true"><use href="#i-copy"/></svg>Kopieren</button>
+      <a class="btn" href="/p/{{$c.ID}}/edit"><svg width="14" height="14" aria-hidden="true"><use href="#i-edit"/></svg>Bearbeiten</a>
+      <form method="post" action="/p/{{$c.ID}}/delete" data-confirm="In den Papierkorb legen?"><button class="btn btn-ghost" type="submit"><svg width="14" height="14" aria-hidden="true"><use href="#i-trash"/></svg>Löschen</button></form>
+      {{else}}
+      <form method="post" action="/p/{{$c.ID}}/restore"><button class="btn btn-signal" type="submit">Wiederherstellen</button></form>
+      {{end}}
+    </div>
+  </div>
+  <table class="usage">
+    <caption>Nutzung je Anbieter · gesamt {{$d.Prompt.UseCount}}× kopiert</caption>
+    <thead><tr><th>Anbieter</th><th>Kopiert</th><th>Zuletzt</th></tr></thead>
+    <tbody>{{range $d.Usage}}<tr><td><i class="mtab t-{{.Color}}"></i>{{.Name}}</td><td>{{.UseCount}}×</td><td>{{reltime .LastUsed}}</td></tr>{{end}}</tbody>
+  </table>
+</article>
+{{end}}

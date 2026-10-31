@@ -1,0 +1,40 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1 class="h1">Verwaltung</h1>
+{{if not $d.HTTPS}}<p class="flash flash-info">SMMYP läuft über HTTP. Kopieren funktioniert über einen Fallback; PWA und „Teilen →" brauchen HTTPS (siehe README, Abschnitt HTTPS im Heimnetz).</p>{{end}}
+<section class="panel">
+  <h2 class="h2">Benutzer</h2>
+  <div class="table-wrap"><table class="ptable">
+    <thead><tr><th>Name</th><th>Rolle</th><th>Seit</th><th>Status</th><th></th></tr></thead>
+    <tbody>{{range $d.Users}}<tr>
+      <td>{{.Username}}</td><td>{{if eq .Role "admin"}}Admin{{else}}Mitglied{{end}}</td><td>{{date .CreatedAt}}</td>
+      <td>{{if .DisabledAt}}deaktiviert{{else}}aktiv{{end}}</td>
+      <td>{{if ne .ID $d.Me}}{{if .DisabledAt}}<form method="post" action="/admin/users/{{.ID}}/enable"><button class="btn btn-sm" type="submit">Aktivieren</button></form>{{else}}<form method="post" action="/admin/users/{{.ID}}/disable" data-confirm="{{.Username}} deaktivieren? Alle Sitzungen werden beendet."><button class="btn btn-ghost btn-sm" type="submit">Deaktivieren</button></form>{{end}}{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  <h3 class="h3">Einladen</h3>
+  {{with $d.InviteLink}}
+  <div class="invite"><p>Einladungslink (einmalig nutzbar, 7 Tage gültig, wird nur jetzt angezeigt):</p>
+    <div class="field"><pre data-primary>{{.}}</pre><button type="button" class="mini" data-copy="field" aria-label="Link kopieren"><svg width="14" height="14" aria-hidden="true"><use href="#i-copy"/></svg></button></div></div>
+  {{end}}
+  <form method="post" action="/admin/invites" class="inline-form">
+    <label>Rolle <select name="role"><option value="member">Mitglied</option><option value="admin">Admin</option></select></label>
+    <button class="btn btn-signal" type="submit">Einladungslink erzeugen</button>
+  </form>
+</section>
+<section class="panel">
+  <h2 class="h2">Backups</h2>
+  <p class="hint">{{if $d.BackupTime}}Automatisch täglich um {{$d.BackupTime}} Uhr, die letzten {{$d.BackupKeep}} werden aufbewahrt.{{else}}Automatische Backups sind aus (SMMYP_BACKUP_TIME=off).{{end}} Ablage: <code>{{$d.DataDir}}/backups</code></p>
+  <form method="post" action="/admin/backup"><button class="btn" type="submit">Backup jetzt erstellen</button></form>
+  {{with $d.Backups}}<ul class="backups">{{range .}}<li><a href="/admin/backups/{{.Name}}">{{.Name}}</a> <span>{{bytes .Size}}</span></li>{{end}}</ul>{{end}}
+</section>
+<section class="panel">
+  <h2 class="h2">Instanz</h2>
+  <dl class="info">
+    <dt>Version</dt><dd>{{$d.Version}}</dd>
+    <dt>Schema</dt><dd>v{{$d.Schema}}</dd>
+    <dt>Datenbank</dt><dd><code>{{$d.DataDir}}/smmyp.db</code> · {{bytes $d.DBSize}}</dd>
+    <dt>Registrierung</dt><dd>{{$d.Register}}</dd>
+  </dl>
+</section>
+{{end}}

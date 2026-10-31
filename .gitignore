@@ -1,0 +1,9 @@
+# Lokale Arbeitsunterlagen (Konzept, Umsetzungspläne, Testfälle) – werden nicht nach GitHub synchronisiert
+/work/
+
+# macOS
+.DS_Store
+
+# Build-Artefakte
+/dist/
+/tmp/

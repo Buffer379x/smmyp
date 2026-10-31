@@ -1,0 +1,38 @@
+{{define "content"}}
+<h1 class="h1">Einstellungen</h1>
+<section class="panel">
+  <h2 class="h2">Darstellung</h2>
+  <form method="post" action="/prefs" class="stack">
+    <input type="hidden" name="back" value="/settings">
+    <fieldset class="seg-field"><legend>Farbschema</legend>
+      <label><input type="radio" name="theme" value="system"{{if eq .Theme ""}} checked{{end}}> System</label>
+      <label><input type="radio" name="theme" value="light"{{if eq .Theme "light"}} checked{{end}}> Papier (hell)</label>
+      <label><input type="radio" name="theme" value="dark"{{if eq .Theme "dark"}} checked{{end}}> Dunkelkammer</label>
+    </fieldset>
+    <fieldset class="seg-field"><legend>Standardansicht</legend>
+      <label><input type="radio" name="view" value="cards"{{if eq .View "cards"}} checked{{end}}> Karten</label>
+      <label><input type="radio" name="view" value="list"{{if eq .View "list"}} checked{{end}}> Liste</label>
+    </fieldset>
+    <button class="btn btn-signal" type="submit">Speichern</button>
+  </form>
+</section>
+<section class="panel">
+  <h2 class="h2">Passwort ändern</h2>
+  <form method="post" action="/settings/password" class="stack">
+    <label>Aktuelles Passwort<input name="current" type="password" autocomplete="current-password" required></label>
+    {{template "err" (index .Errors "current")}}
+    <label>Neues Passwort <small>(mindestens 10 Zeichen)</small><input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
+    {{template "err" (index .Errors "password")}}
+    <button class="btn" type="submit">Passwort ändern</button>
+  </form>
+</section>
+<section class="panel">
+  <h2 class="h2">Daten & Sitzungen</h2>
+  <p><a class="btn" href="/export.json">Alle Prompts exportieren (JSON)</a></p>
+  <form method="post" action="/settings/logout-all" data-confirm="Auf allen Geräten abmelden?"><button class="btn btn-ghost" type="submit">Auf allen Geräten abmelden</button></form>
+</section>
+<section class="panel">
+  <h2 class="h2">Tastatur</h2>
+  <p class="hint keys"><kbd>/</kbd> Suche · <kbd>Esc</kbd> Suche leeren · <kbd>j</kbd>/<kbd>k</kbd> Karte wählen · <kbd>Enter</kbd> öffnen · <kbd>c</kbd> kopieren · <kbd>f</kbd> Favorit · <kbd>n</kbd> neuer Prompt · <kbd>v</kbd> Karten/Liste</p>
+</section>
+{{end}}

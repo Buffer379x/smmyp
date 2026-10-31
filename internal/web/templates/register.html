@@ -1,0 +1,13 @@
+{{define "content"}}
+<section class="panel narrow">
+  <h1 class="h1">Konto anlegen</h1>
+  {{template "err" (index .Errors "form")}}
+  <form method="post" action="{{.Data}}" class="stack">
+    <label>Benutzername<input name="username" autocomplete="username" required autofocus value="{{.Form.Get "username"}}"></label>
+    {{template "err" (index .Errors "username")}}
+    <label>Passwort <small>(mindestens 10 Zeichen)</small><input name="password" type="password" autocomplete="new-password" required minlength="10"></label>
+    {{template "err" (index .Errors "password")}}
+    <button class="btn btn-signal" type="submit">Konto anlegen</button>
+  </form>
+</section>
+{{end}}

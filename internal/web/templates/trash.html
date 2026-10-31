@@ -1,0 +1,18 @@
+{{define "content"}}
+{{$d := .Data}}
+<div class="results-head"><h1 class="h1">Papierkorb <span class="count">{{len $d.Cards}}</span></h1></div>
+<p class="hint">Einträge werden nach {{$d.Days}} Tagen automatisch endgültig gelöscht.</p>
+{{if not $d.Cards}}<div class="empty"><h2>Der Papierkorb ist leer.</h2></div>{{end}}
+<ul class="list trash-list">
+{{range $d.Cards}}
+  <li class="row">
+    <span class="row-ki">{{range .Tabs}}<i class="mtab t-{{.Color}}"></i>{{end}}<span>{{.Names}}</span></span>
+    <span class="row-main"><a class="row-title" href="{{.URL}}">{{.TitleRaw}}</a><span class="row-snip">gelöscht {{reltime .Deleted}}</span></span>
+    <span class="row-actions">
+      <form method="post" action="/p/{{.ID}}/restore"><button class="btn" type="submit">Wiederherstellen</button></form>
+      <form method="post" action="/p/{{.ID}}/purge" data-confirm="Endgültig löschen? Das lässt sich nicht rückgängig machen."><button class="btn btn-ghost" type="submit">Endgültig löschen</button></form>
+    </span>
+  </li>
+{{end}}
+</ul>
+{{end}}
