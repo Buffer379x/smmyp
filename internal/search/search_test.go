@@ -73,3 +73,23 @@ func TestHighlightPrefixAndUmlaut(t *testing.T) {
 		t.Fatalf("got %s\nwant %s", got, want)
 	}
 }
+
+func TestSubstringsAndRating(t *testing.T) {
+	q := Parse("~solo ~ab bew:4 gitarre")
+	if !reflect.DeepEqual(q.Substrings, []string{"solo"}) || q.Rating != 4 {
+		t.Fatalf("%+v", q)
+	}
+	if e, ok := q.TrigramExpr(true); !ok || e != `"solo" AND "gitarre"` {
+		t.Fatalf("TrigramExpr: %q %v", e, ok)
+	}
+	if _, ok := Parse("ab cd").TrigramExpr(true); ok {
+		t.Fatal("Begriffe < 3 Zeichen dürfen keinen Trigram-Ausdruck ergeben")
+	}
+	if got := string(q.Mark("Gitarrensolo mit Gitarre")); got != "<mark>Gitarre</mark>n<mark>solo</mark> mit <mark>Gitarre</mark>" {
+		t.Fatalf("Mark: %s", got)
+	}
+	q.Fuzzy = true
+	if got := string(q.Mark("Bassgitarre")); got != "Bass<mark>gitarre</mark>" {
+		t.Fatalf("Mark fuzzy: %s", got)
+	}
+}

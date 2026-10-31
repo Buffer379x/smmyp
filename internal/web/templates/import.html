@@ -1,0 +1,24 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1 class="h1">Import</h1>
+{{with $d.Report}}
+<section class="panel">
+  <h2 class="h2">Ergebnis</h2>
+  <p><b>{{.Imported}}</b> importiert · <b>{{.Duplicates}}</b> übersprungen (gab es schon){{with .Failed}} · <b>{{len .}}</b> mit Fehlern{{end}}</p>
+  {{with .Failed}}<ul class="import-errors">{{range .}}<li>{{.}}</li>{{end}}</ul>{{end}}
+  <p><a class="btn" href="/">Zur Übersicht</a></p>
+</section>
+{{end}}
+<section class="panel">
+  <form method="post" action="/import" enctype="multipart/form-data" class="stack">
+    <label>Datei <small>(SMMYP-Export als .json oder Tabelle als .csv, höchstens 5 MB)</small><input type="file" name="file" accept=".json,.csv,application/json,text/csv" required></label>
+    {{template "err" (index .Errors "file")}}
+    <button class="btn btn-signal" type="submit">Importieren</button>
+  </form>
+  <h3 class="h3">CSV-Format</h3>
+  <p class="hint">Erste Zeile mit Spaltennamen, Trennzeichen Komma oder Semikolon. Bekannte Spalten: <code>title</code>, <code>providers</code> (z. B. <code>suno, udio</code>), <code>tags</code>, <code>notes</code>, <code>model</code> sowie Feldnamen <code>prompt</code>, <code>system</code>, <code>style</code>, <code>lyrics</code>, <code>exclude</code>, <code>negative</code>, <code>params</code>.</p>
+  <pre class="code-sample">title;providers;style;tags
+Night Drive;suno;dark synthwave, 98 bpm;synthwave, dark</pre>
+  <p class="hint">Inhaltsgleiche Prompts werden übersprungen, unbekannte Anbieter im Ergebnis gemeldet.</p>
+</section>
+{{end}}

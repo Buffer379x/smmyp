@@ -93,3 +93,99 @@ func Top(ctx context.Context, db *sql.DB, ownerID int64, limit int) ([]Count, er
 	}
 	return out, rows.Err()
 }
+
+// DefaultAliases gelten, solange ein Benutzer keinen eigenen Alias für dieselbe Schreibweise hat.
+var DefaultAliases = map[string]string{
+	"lofi": "lo-fi", "hiphop": "hip-hop", "rnb": "r-n-b", "dnb": "drum-and-bass",
+	"synth-wave": "synthwave", "lo-fi-hip-hop": "lo-fi", "codereview": "code-review",
+}
+
+type querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// Resolve bildet Tags über Aliase auf ihre kanonische Form ab (eigene Aliase vor Standard-Aliasen).
+func Resolve(ctx context.Context, q querier, ownerID int64, slugs []string) ([]string, error) {
+	own := map[string]string{}
+	if len(slugs) > 0 {
+		args := []any{ownerID}
+		ph := make([]string, len(slugs))
+		for i, s := range slugs {
+			args = append(args, s)
+			ph[i] = "?"
+		}
+		rows, err := q.QueryContext(ctx, "SELECT alias, tag_slug FROM tag_aliases WHERE owner_id = ? AND alias IN ("+strings.Join(ph, ",")+")", args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var a, t string
+			if err := rows.Scan(&a, &t); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			own[a] = t
+		}
+		rows.Close()
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, s := range slugs {
+		if t, ok := own[s]; ok {
+			s = t
+		} else if t, ok := DefaultAliases[s]; ok {
+			s = t
+		}
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out, nil
+}
+
+type Alias struct{ Alias, Slug string }
+
+func Aliases(ctx context.Context, db *sql.DB, ownerID int64) ([]Alias, error) {
+	rows, err := db.QueryContext(ctx, "SELECT alias, tag_slug FROM tag_aliases WHERE owner_id = ? ORDER BY tag_slug, alias", ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Alias
+	for rows.Next() {
+		var a Alias
+		if err := rows.Scan(&a.Alias, &a.Slug); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// Rule: eigene Regel „enthält X → Tag Y" (Stufe 1 des Auto-Taggings).
+type Rule struct {
+	ID        int64
+	Category  string
+	Kind      string // word | phrase | regex
+	Pattern   string
+	Tag       string
+	AutoApply bool
+}
+
+func Rules(ctx context.Context, db *sql.DB, ownerID int64) ([]Rule, error) {
+	rows, err := db.QueryContext(ctx, "SELECT id, category, kind, pattern, tag_slug, auto_apply FROM tag_rules WHERE owner_id = ? ORDER BY tag_slug, id", ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Rule
+	for rows.Next() {
+		var r Rule
+		if err := rows.Scan(&r.ID, &r.Category, &r.Kind, &r.Pattern, &r.Tag, &r.AutoApply); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}

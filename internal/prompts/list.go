@@ -7,6 +7,7 @@ import (
 	"github.com/Buffer379x/smmyp/internal/providers"
 	"github.com/Buffer379x/smmyp/internal/search"
 	"github.com/Buffer379x/smmyp/internal/store"
+	"github.com/Buffer379x/smmyp/internal/tags"
 )
 
 // Sortierungen für Übersichten.
@@ -17,15 +18,18 @@ const (
 	SortTitle    = "title"    // A–Z
 	SortCreated  = "created"  // neueste
 	SortProvider = "provider" // nach Hauptanbieter
+	SortRating   = "rating"   // beste Bewertung zuerst
 )
 
 type ListOptions struct {
-	Query     search.Query
-	ContextID int64 // Schublade: nur Prompts dieses Anbieters, Sortierung nach dessen Nutzung
-	Trash     bool
-	Sort      string
-	Limit     int
-	Offset    int
+	Query        search.Query
+	ContextID    int64 // Schublade: nur Prompts dieses Anbieters, Sortierung nach dessen Nutzung
+	CollectionID int64 // nur Prompts dieser Sammlung
+	Trash        bool
+	fuzzy        bool // Teilwortsuche statt Wortsuche (Rückfall bei wenigen Treffern)
+	Sort         string
+	Limit        int
+	Offset       int
 }
 
 type Facet struct {
@@ -39,6 +43,7 @@ type Result struct {
 	FacetTotal int     // eindeutige Treffer ohne Anbieter-Filter („Alle")
 	Facets     []Facet // je Anbieter, ohne Anbieter-Filter
 	Unknown    []string
+	Fuzzy      bool // Treffer stammen aus der Teilwortsuche
 }
 
 // where sammelt Bedingungen und Argumente.
@@ -55,8 +60,32 @@ func (w *where) add(cond string, args ...any) {
 
 func (w *where) sql() string { return w.join + " WHERE " + strings.Join(w.conds, " AND ") }
 
-// List liefert eine Seite von Prompts samt Gesamtzahl und Facetten.
+// FuzzyThreshold: Unter so vielen Treffern versucht die Suche zusätzlich die Teilwortsuche (Concept 6.3).
+const FuzzyThreshold = 5
+
+// List liefert eine Seite von Prompts samt Gesamtzahl und Facetten. Liefert die Wortsuche weniger als
+// FuzzyThreshold Treffer, wird die Teilwortsuche probiert und genommen, wenn sie mehr findet.
 func (s *Service) List(ctx context.Context, sc store.Scope, o ListOptions) (Result, error) {
+	res, err := s.list(ctx, sc, o)
+	if err != nil || o.Trash || !o.Query.HasText() || res.Total >= FuzzyThreshold {
+		return res, err
+	}
+	if _, ok := o.Query.TrigramExpr(true); !ok {
+		return res, nil
+	}
+	o.fuzzy = true
+	fz, err := s.list(ctx, sc, o)
+	if err != nil {
+		return res, err
+	}
+	if fz.Total > res.Total {
+		fz.Fuzzy = true
+		return fz, nil
+	}
+	return res, nil
+}
+
+func (s *Service) list(ctx context.Context, sc store.Scope, o ListOptions) (Result, error) {
 	var res Result
 	all, err := providers.List(ctx, s.DB, sc)
 	if err != nil {
@@ -66,6 +95,12 @@ func (s *Service) List(ctx context.Context, sc store.Scope, o ListOptions) (Resu
 		o.Limit = 50
 	}
 	q := o.Query
+	if len(q.Tags) > 0 {
+		if q.Tags, err = tags.Resolve(ctx, s.DB.R, sc.UserID, q.Tags); err != nil {
+			return res, err
+		}
+	}
+	trigram, trigramOK := q.TrigramExpr(o.fuzzy)
 
 	// Anbieter-Filter (@slug, kat:) auf sichtbare IDs auflösen.
 	var provFilter []any
@@ -88,6 +123,9 @@ func (s *Service) List(ctx context.Context, sc store.Scope, o ListOptions) (Resu
 	build := func(withProviderFilter bool) *where {
 		w := &where{}
 		match := q.MatchExpr()
+		if o.fuzzy {
+			match = ""
+		}
 		if match != "" {
 			w.join = " JOIN prompt_fts ON prompt_fts.rowid = p.id"
 			w.add("prompt_fts MATCH ?", match)
@@ -97,6 +135,15 @@ func (s *Service) List(ctx context.Context, sc store.Scope, o ListOptions) (Resu
 			w.add("p.deleted_at IS NOT NULL")
 		} else {
 			w.add("p.deleted_at IS NULL")
+		}
+		if trigramOK {
+			w.add("p.id IN (SELECT rowid FROM prompt_trigram WHERE prompt_trigram MATCH ?)", trigram)
+		}
+		if q.Rating > 0 {
+			w.add("p.rating >= ?", q.Rating)
+		}
+		if o.CollectionID > 0 {
+			w.add("EXISTS (SELECT 1 FROM collection_prompts cp JOIN collections col ON col.id = cp.collection_id WHERE cp.prompt_id = p.id AND col.id = ? AND col.owner_id = ?)", o.CollectionID, sc.UserID)
 		}
 		if ex := q.ExcludeExpr(); ex != "" {
 			w.add("p.id NOT IN (SELECT rowid FROM prompt_fts WHERE prompt_fts MATCH ?)", ex)
@@ -130,7 +177,7 @@ func (s *Service) List(ctx context.Context, sc store.Scope, o ListOptions) (Resu
 	args := append([]any{}, w.args...)
 	switch o.Sort {
 	case SortAuto:
-		if q.HasText() {
+		if q.HasText() && !o.fuzzy {
 			order = "bm25(prompt_fts, 8.0, 1.0, 4.0, 0.5), ifnull(p.last_used_at, 0) DESC"
 		} else if o.ContextID > 0 {
 			order = "ifnull((SELECT last_used_at FROM prompt_providers c2 WHERE c2.prompt_id = p.id AND c2.provider_id = ?), 0) DESC, p.updated_at DESC"
@@ -142,6 +189,8 @@ func (s *Service) List(ctx context.Context, sc store.Scope, o ListOptions) (Resu
 		order = "p.title COLLATE NOCASE ASC"
 	case SortCreated:
 		order = "p.created_at DESC"
+	case SortRating:
+		order = "ifnull(p.rating, 0) DESC, p.use_count DESC, ifnull(p.last_used_at, 0) DESC"
 	case SortProvider:
 		order = "(SELECT pv.name FROM prompt_providers m JOIN providers pv ON pv.id = m.provider_id WHERE m.prompt_id = p.id AND m.position = 0) COLLATE NOCASE, p.title COLLATE NOCASE"
 	}

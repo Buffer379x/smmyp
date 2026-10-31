@@ -36,6 +36,8 @@ type Page struct {
 	Errors    map[string]string
 	Form      url.Values
 	Data      any
+	MLAllowed bool // Instanz erlaubt die KI-Hilfe
+	MLOn      bool // Benutzer hat sie eingeschaltet
 }
 
 type ScopeOption struct {
@@ -58,7 +60,9 @@ func (s *Server) loadTemplates() error {
 			}
 			return false
 		},
-		"join": strings.Join,
+		"join":  strings.Join,
+		"pct":   func(f float64) float64 { return f * 100 },
+		"stars": func(n int) string { return strings.Repeat("★", n) + strings.Repeat("☆", 5-n) },
 		"initials": func(name string) string {
 			r := []rune(strings.ToUpper(name))
 			if len(r) > 2 {
@@ -101,9 +105,11 @@ func (s *Server) loadTemplates() error {
 // page füllt die gemeinsamen Felder.
 func (s *Server) page(w http.ResponseWriter, r *http.Request, title string) *Page {
 	p := &Page{Title: title, User: currentUser(r), Version: s.version, Path: r.URL.RequestURI()}
+	p.MLAllowed = s.cfg.MLAllowed
 	if p.User != nil {
 		p.Theme = p.User.Settings.Theme
 		p.View = p.User.Settings.View
+		p.MLOn = s.mlOn(p.User)
 	}
 	if p.View != "list" {
 		p.View = "cards"

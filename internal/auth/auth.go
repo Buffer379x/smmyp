@@ -73,6 +73,7 @@ var dummyHash, _ = HashPassword("smmyp-dummy-password")
 type Settings struct {
 	Theme string `json:"theme,omitempty"` // light | dark | "" (System)
 	View  string `json:"view,omitempty"`  // cards | list
+	ML    bool   `json:"ml,omitempty"`    // KI-Hilfe (Auto-Tagging, Machine Learning); Standard: aus
 }
 
 type User struct {
@@ -366,6 +367,41 @@ func (s *Service) SetPassword(ctx context.Context, userID int64, next string) er
 		_, err := tx.ExecContext(ctx, "UPDATE users SET password_hash = ? WHERE id = ?", h, userID)
 		return err
 	})
+}
+
+// ProxyUser liefert (oder legt an) einen Benutzer, der sich über den Reverse-Proxy-Header anmeldet.
+// Der erste Benutzer einer leeren Instanz wird Admin. Proxy-Benutzer haben kein Passwort.
+func (s *Service) ProxyUser(ctx context.Context, username string, create bool) (User, error) {
+	username = strings.TrimSpace(username)
+	if !usernameRe.MatchString(username) {
+		return User{}, ValidationError{"username": "ungültiger Benutzername im Proxy-Header"}
+	}
+	u, err := s.UserByName(ctx, username)
+	if err == nil {
+		if u.DisabledAt != 0 {
+			return User{}, ErrDisabled
+		}
+		return u, nil
+	}
+	if !errors.Is(err, store.ErrNotFound) || !create {
+		return User{}, err
+	}
+	err = s.DB.Tx(ctx, func(tx *sql.Tx) error {
+		var n int
+		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM users").Scan(&n); err != nil {
+			return err
+		}
+		role := "member"
+		if n == 0 {
+			role = "admin"
+		}
+		_, err := tx.ExecContext(ctx, "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, NULL, ?, ?)", username, role, store.Now().Unix())
+		return err
+	})
+	if err != nil {
+		return User{}, err
+	}
+	return s.UserByName(ctx, username)
 }
 
 // UserByName (für die CLI).

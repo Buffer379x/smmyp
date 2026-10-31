@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -247,7 +248,21 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request, u *auth.User) 
 		s.serverError(w, r, err)
 		return
 	}
+	p.Data = s.bookmarklet(r)
 	s.render(w, http.StatusOK, "settings", p)
+}
+
+// bookmarklet: Lesezeichen-Link, der markierten Text samt Titel und Quelle ins Formular schickt.
+func (s *Server) bookmarklet(r *http.Request) template.URL {
+	base := "http://" + r.Host
+	if s.cfg.BaseURL != nil {
+		base = s.cfg.BaseURL.Scheme + "://" + s.cfg.BaseURL.Host
+	} else if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		base = "https://" + r.Host
+	}
+	js := "javascript:(function(){var s=String(window.getSelection()||'');window.open('" + base +
+		"/p/new?text='+encodeURIComponent(s)+'&title='+encodeURIComponent(document.title)+'&source='+encodeURIComponent(location.href),'_blank');})();"
+	return template.URL(js)
 }
 
 func (s *Server) settingsPassword(w http.ResponseWriter, r *http.Request, u *auth.User) {
@@ -261,6 +276,7 @@ func (s *Server) settingsPassword(w http.ResponseWriter, r *http.Request, u *aut
 			return
 		}
 		p.Errors = verr
+		p.Data = s.bookmarklet(r)
 		s.render(w, http.StatusUnprocessableEntity, "settings", p)
 		return
 	} else if err != nil {
@@ -294,6 +310,16 @@ func (s *Server) prefs(w http.ResponseWriter, r *http.Request, u *auth.User) {
 	}
 	if v := r.PostForm.Get("view"); v == "list" || v == "cards" {
 		st.View = v
+	}
+	if r.PostForm.Get("ml_set") == "1" && s.cfg.MLAllowed {
+		wasOn := st.ML
+		st.ML = r.PostForm.Get("ml") == "1"
+		if wasOn && !st.ML {
+			if err := s.autotag.Forget(r.Context(), u.ID); err != nil {
+				s.serverError(w, r, err)
+				return
+			}
+		}
 	}
 	if err := s.auth.SaveSettings(r.Context(), u.ID, st); err != nil {
 		s.serverError(w, r, err)

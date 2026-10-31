@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"path/filepath"
 	"regexp"
@@ -265,6 +266,18 @@ func TestAllRoutesIsolationTC_ISO_05(t *testing.T) {
 	var annaID string
 	h.db.R.QueryRow("SELECT id FROM users WHERE username = 'anna'").Scan(&annaID)
 
+	// Echte Ziele von Anna für Sammlungen, Regeln und Versionen.
+	h.do(anna, "POST", "/c", url.Values{"name": {"Annas Sammlung"}})
+	h.do(anna, "POST", "/tags/rules", url.Values{"kind": {"word"}, "pattern": {"geheim"}, "tag": {"annas-regel"}})
+	h.do(anna, "POST", "/p/"+id, url.Values{"title": {"Annas Geheimnis"}, "provider": {h.providerID("claude")}, "field_prompt": {"xylophon-zauberwort v2"}})
+	var colID, ruleID, verID string
+	h.db.R.QueryRow("SELECT id FROM collections WHERE owner_id = (SELECT id FROM users WHERE username='anna')").Scan(&colID)
+	h.db.R.QueryRow("SELECT id FROM tag_rules WHERE tag_slug = 'annas-regel'").Scan(&ruleID)
+	h.db.R.QueryRow("SELECT id FROM prompt_versions WHERE prompt_id = ?", id).Scan(&verID)
+	if colID == "" || ruleID == "" || verID == "" {
+		t.Fatalf("Testdaten fehlen: col=%q rule=%q ver=%q", colID, ruleID, verID)
+	}
+
 	checked := 0
 	for _, rt := range h.srv.routes() {
 		method, path, _ := strings.Cut(rt.Pattern, " ")
@@ -272,8 +285,14 @@ func TestAllRoutesIsolationTC_ISO_05(t *testing.T) {
 			continue
 		}
 		targets := []string{id, trashed}
-		if strings.HasPrefix(path, "/admin/users/") {
+		path = strings.Replace(path, "{vid}", verID, 1)
+		switch {
+		case strings.HasPrefix(path, "/admin/users/"):
 			targets = []string{annaID}
+		case strings.HasPrefix(path, "/c/"):
+			targets = []string{colID}
+		case strings.HasPrefix(path, "/tags/rules/"):
+			targets = []string{ruleID}
 		}
 		if strings.HasPrefix(path, "/providers/") {
 			// Ein eigener Anbieter von Anna darf von Ben nicht gelöscht werden.
@@ -298,12 +317,12 @@ func TestAllRoutesIsolationTC_ISO_05(t *testing.T) {
 			}
 		}
 	}
-	if checked < 10 {
+	if checked < 20 {
 		t.Fatalf("nur %d Routen geprüft", checked)
 	}
 	// Annas Daten sind unverändert.
 	_, body := h.do(anna, "GET", "/p/"+id, nil)
-	if !strings.Contains(body, "xylophon-zauberwort") || strings.Contains(body, "gekapert") {
+	if !strings.Contains(body, "xylophon-zauberwort v2") || strings.Contains(body, "gekapert") {
 		t.Fatal("Annas Prompt wurde verändert")
 	}
 	if resp, body := h.do(ben, "GET", "/?q=xylophon", nil); resp.StatusCode != 200 || strings.Contains(body, "Annas") {
@@ -335,7 +354,7 @@ func TestSecurityHeadersTC_SEC_01(t *testing.T) {
 	h := newHarness(t)
 	c := h.user("anna", "admin")
 	h.createPrompt(c, "Test", "suno", "style", "dark")
-	for _, p := range []string{"/", "/login", "/p/new", "/settings", "/providers", "/admin", "/trash", "/p/1"} {
+	for _, p := range []string{"/", "/login", "/p/new", "/settings", "/providers", "/admin", "/trash", "/p/1", "/tags", "/c", "/import", "/p/1/versions"} {
 		resp, body := h.do(c, "GET", p, nil)
 		csp := resp.Header.Get("Content-Security-Policy")
 		if !strings.Contains(csp, "script-src 'self'") || strings.Contains(csp, "unsafe") {
@@ -415,7 +434,7 @@ func TestViewPreference(t *testing.T) {
 		t.Fatalf("Rücksprung %q", resp.Header.Get("Location"))
 	}
 	_, body := h.do(c, "GET", "/", nil)
-	if !strings.Contains(body, `class="list"`) {
+	if !strings.Contains(body, `class="list bulk-list"`) {
 		t.Fatal("Listenansicht nicht aktiv")
 	}
 	if resp, _ := h.do(c, "POST", "/prefs", url.Values{"view": {"cards"}, "back": {"//evil.example"}}); resp.Header.Get("Location") != "/" {
@@ -429,4 +448,12 @@ func TestHealthz(t *testing.T) {
 	if resp.StatusCode != 200 || strings.TrimSpace(body) != "ok" {
 		t.Fatalf("healthz: %d %q", resp.StatusCode, body)
 	}
+}
+
+func mustPrefixes(cidrs ...string) []netip.Prefix {
+	var out []netip.Prefix
+	for _, c := range cidrs {
+		out = append(out, netip.MustParsePrefix(c))
+	}
+	return out
 }

@@ -8,10 +8,12 @@ import (
 	"strings"
 
 	"github.com/Buffer379x/smmyp/internal/auth"
+	"github.com/Buffer379x/smmyp/internal/collections"
 	"github.com/Buffer379x/smmyp/internal/prompts"
 	"github.com/Buffer379x/smmyp/internal/providers"
 	"github.com/Buffer379x/smmyp/internal/search"
 	"github.com/Buffer379x/smmyp/internal/tags"
+	"github.com/Buffer379x/smmyp/internal/vars"
 )
 
 // Rail: Schubladen links (Desktop) bzw. Chips oben (Handy).
@@ -20,7 +22,8 @@ type Rail struct {
 	Categories                 []RailCategory
 	All                        []providers.Provider
 	TopTags                    []tags.Count
-	Active                     string // Slug der aktiven Schublade, "fav" oder ""
+	Collections                []collections.Collection
+	Active                     string // Slug der aktiven Schublade, "fav", "trash", "c<ID>" oder ""
 }
 
 type RailCategory struct {
@@ -47,7 +50,11 @@ func (s *Server) rail(r *http.Request, u *auth.User) (*Rail, error) {
 	if err != nil {
 		return nil, err
 	}
-	rail := &Rail{AllCount: counts.All, Favorites: counts.Favorites, Trash: counts.Trash, All: all, TopTags: top}
+	cols, err := collections.List(ctx, s.db, u.Scope())
+	if err != nil {
+		return nil, err
+	}
+	rail := &Rail{AllCount: counts.All, Favorites: counts.Favorites, Trash: counts.Trash, All: all, TopTags: top, Collections: cols}
 	var cur *RailCategory
 	for _, p := range all {
 		n := counts.ByProvider[p.ID]
@@ -109,13 +116,14 @@ type CardVM struct {
 	Primary     string
 	Names       string
 	Deleted     int64
+	Rating      int
+	HasVars     bool // Platzhalter vorhanden und ausgewertet → Ausfüll-Dialog beim Kopieren
 }
 
 // card baut die Ansicht eines Prompts. ctx ist der Anbieter der aktuellen Schublade (oder nil).
 func card(p prompts.Prompt, ctx *providers.Provider, q search.Query) CardVM {
-	terms := q.HighlightTerms()
-	c := CardVM{ID: p.ID, TitleRaw: p.Title, Title: search.Highlight(p.Title, terms), URL: "/p/" + strconv.FormatInt(p.ID, 10),
-		Model: p.Model, LastUsed: p.LastUsedAt, UseCount: p.UseCount, Favorite: p.IsFavorite, Deleted: p.DeletedAt}
+	c := CardVM{ID: p.ID, TitleRaw: p.Title, Title: q.Mark(p.Title), URL: "/p/" + strconv.FormatInt(p.ID, 10),
+		Model: p.Model, LastUsed: p.LastUsedAt, UseCount: p.UseCount, Favorite: p.IsFavorite, Deleted: p.DeletedAt, Rating: p.Rating}
 	for i, l := range p.Providers {
 		if i == 3 && len(p.Providers) > 4 {
 			c.MoreTabs = len(p.Providers) - 3
@@ -153,7 +161,10 @@ func card(p prompts.Prompt, ctx *providers.Provider, q search.Query) CardVM {
 		if v == "" {
 			continue
 		}
-		c.Fields = append(c.Fields, FieldVM{Key: f.Key, Label: f.Label, Raw: v, Value: search.Highlight(v, terms), Primary: f.Key == primaryKey})
+		c.Fields = append(c.Fields, FieldVM{Key: f.Key, Label: f.Label, Raw: v, Value: q.Mark(v), Primary: f.Key == primaryKey})
+		if !p.VarsOff && vars.Has(v) {
+			c.HasVars = true
+		}
 	}
 	hasPrimary := false
 	for _, f := range c.Fields {
@@ -168,7 +179,7 @@ func card(p prompts.Prompt, ctx *providers.Provider, q search.Query) CardVM {
 			if len(snip) > 160 {
 				snip = append(snip[:160], '…')
 			}
-			c.Snippet = search.Highlight(string(snip), terms)
+			c.Snippet = q.Mark(string(snip))
 			c.PrimaryRaw = f.Raw
 		}
 	}
@@ -219,7 +230,7 @@ func group(items []prompts.Prompt, order []providers.Provider, only map[int64]bo
 			}
 			n++
 			if where, ok := shownIn[p.ID]; ok {
-				g.Refs = append(g.Refs, RefVM{ID: p.ID, Title: search.Highlight(p.Title, q.HighlightTerms()), URL: "/p/" + strconv.FormatInt(p.ID, 10) + "?a=" + prov.Slug, ShownIn: where, Provider: prov.Name})
+				g.Refs = append(g.Refs, RefVM{ID: p.ID, Title: q.Mark(p.Title), URL: "/p/" + strconv.FormatInt(p.ID, 10) + "?a=" + prov.Slug, ShownIn: where, Provider: prov.Name})
 				continue
 			}
 			shownIn[p.ID] = prov.Name

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0 – 31.10.2026 (Phase 2)
+
+- **Platzhalter** `{{name}}` / `{{name=Standard}}` mit Ausfüll-Dialog beim Kopieren, zuletzt benutzte Werte, `\{{` für wörtliche Klammern, pro Prompt abschaltbar
+- **Versionen** mit Wort-Diff und Wiederherstellen (bis 50 je Prompt)
+- **Sammlungen** quer über Anbieter, **Bewertung** (1–5, `bew:4`, Sortierung), **Ergebnis-Links**, Quelle
+- **Teilwortsuche** (FTS5-Trigram): `~wort`, automatisch bei weniger als 5 Treffern
+- **Tags:** Aliase (z. B. `lofi` → `lo-fi`), Umbenennen/Zusammenführen, eigene Regeln
+- **KI-Hilfe (optional, standardmäßig aus):** Wörterbücher, ähnliche Prompts, Complement-Naive-Bayes-Klassifikator für Tags und Anbieter, Begründungen, Lernen aus Übernehmen/Ablehnen; `SMMYP_ML=off` schaltet sie instanzweit ab
+- **Hinweise beim Speichern:** fast gleiche Prompts (SimHash), versehentlich eingefügte API-Schlüssel
+- **Ähnliche Prompts** in der Detailansicht, Spracherkennung (de/en)
+- **Import** (JSON, CSV), **Mehrfachauswahl** in der Liste (Tag, Anbieter, Sammlung, Papierkorb), **Befehlspalette** `⌘K`
+- **PWA** (Manifest, Icons, Service Worker, „Teilen →"), **Bookmarklet**, Anbieter-Erkennung aus der Quell-URL
+- **Proxy-Login** (SSO-Header, nur von vertrauenswürdigen Proxys)
+- Schema v2 mit automatischem Backup vor der Migration
+
 ## 0.1.0-rc1 – 31.10.2026
 
 Erster Release-Kandidat (Phase 0 + 1 aus dem Konzept).

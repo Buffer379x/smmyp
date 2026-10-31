@@ -1,17 +1,18 @@
 {{define "content"}}
-{{$d := .Data}}{{$c := $d.Card}}
-<article class="detail" data-id="{{$c.ID}}" data-ctx="{{$c.ContextSlug}}">
+{{$d := .Data}}{{$c := $d.Card}}{{$p := $d.Prompt}}
+<article class="detail" data-id="{{$c.ID}}" data-ctx="{{$c.ContextSlug}}"{{if $c.HasVars}} data-vars{{end}}>
   <p class="back"><a href="{{$d.BackURL}}">← Zurück</a></p>
-  <div class="tabs">{{range $d.Prompt.Providers}}<a class="tab t-{{.Color}}" href="/p/{{$c.ID}}?a={{.Slug}}">{{.Name}}</a>{{end}}</div>
+  <div class="tabs">{{range $p.Providers}}<a class="tab t-{{.Color}}" href="/p/{{$c.ID}}?a={{.Slug}}">{{.Name}}</a>{{end}}</div>
   <div class="card-body detail-body{{with index $c.Tabs 0}} t-{{.Color}}{{end}}">
     <div class="card-head">
       <div>
-        <h1 class="h1">{{$d.Prompt.Title}}</h1>
-        <p class="meta">{{with $d.Prompt.Model}}{{.}} · {{end}}angelegt {{date $d.Prompt.CreatedAt}} · geändert {{reltime $d.Prompt.UpdatedAt}}</p>
+        <h1 class="h1">{{$p.Title}}</h1>
+        <p class="meta">{{with $p.Model}}{{.}} · {{end}}{{if $p.Rating}}<span class="stars" title="{{$p.Rating}} von 5">{{stars $p.Rating}}</span> · {{end}}angelegt {{date $p.CreatedAt}} · geändert {{reltime $p.UpdatedAt}}{{with $d.Language}} · {{.}}{{end}}{{if $d.Versions}} · <a href="/p/{{$c.ID}}/versions">{{$d.Versions}} {{if eq $d.Versions 1}}Version{{else}}Versionen{{end}}</a>{{end}}</p>
       </div>
-      {{if not $d.Prompt.DeletedAt}}{{template "favbtn" $c}}{{end}}
+      {{if not $p.DeletedAt}}{{template "favbtn" $c}}{{end}}
     </div>
-    {{if $d.Prompt.DeletedAt}}<p class="flash flash-error">Liegt im Papierkorb seit {{date $d.Prompt.DeletedAt}}.</p>{{end}}
+    {{if $p.DeletedAt}}<p class="flash flash-error">Liegt im Papierkorb seit {{date $p.DeletedAt}}.</p>{{end}}
+    {{if $c.HasVars}}<p class="hint">Enthält Platzhalter: Beim Kopieren fragt SMMYP die Werte ab (zuletzt benutzte sind vorbelegt).</p>{{end}}
     {{range $c.Fields}}
     <div class="field field-full">
       <span class="label">{{.Label}}{{if .Primary}} · Hauptfeld{{end}}</span>
@@ -20,21 +21,58 @@
     </div>
     {{end}}
     {{with $c.Tags}}<ul class="tags">{{range .}}<li><a href="/?q=%23{{.Slug}}">#{{.Slug}}</a></li>{{end}}</ul>{{end}}
-    {{with $d.Prompt.Notes}}<div class="notes"><span class="label">Notizen</span><p>{{.}}</p></div>{{end}}
+    {{with $d.Suggestions}}
+    <div class="suggest-box">
+      <span class="label">Vorschläge</span>
+      <ul class="tags suggestions">{{range .}}
+        <li class="auto" title="{{.Reason}}">#{{.Slug}}
+          <form method="post" action="/p/{{$c.ID}}/tags" class="js-suggest"><input type="hidden" name="tag" value="{{.Slug}}"><button name="action" value="accept" aria-label="#{{.Slug}} übernehmen" title="übernehmen ({{.Reason}})">+</button><button name="action" value="reject" class="rej" aria-label="#{{.Slug}} ablehnen" title="ablehnen">×</button></form>
+        </li>{{end}}
+      </ul>
+    </div>
+    {{end}}
+    {{with $p.Notes}}<div class="notes"><span class="label">Notizen</span><p>{{.}}</p></div>{{end}}
+    {{if or $p.Links $p.SourceURL}}
+    <div class="notes"><span class="label">Ergebnisse &amp; Quelle</span>
+      <ul class="links">
+        {{range $p.Links}}<li><a href="{{.URL}}" rel="noopener noreferrer" target="_blank">{{if .Label}}{{.Label}}{{else}}{{.URL}}{{end}}</a></li>{{end}}
+        {{with $p.SourceURL}}<li class="src">Quelle: <a href="{{.}}" rel="noopener noreferrer" target="_blank">{{.}}</a></li>{{end}}
+      </ul>
+    </div>
+    {{end}}
     <div class="card-foot detail-actions">
-      {{if not $d.Prompt.DeletedAt}}
+      {{if not $p.DeletedAt}}
       <button type="button" class="btn btn-signal copy" data-copy="primary"><svg width="14" height="14" aria-hidden="true"><use href="#i-copy"/></svg>Kopieren</button>
       <a class="btn" href="/p/{{$c.ID}}/edit"><svg width="14" height="14" aria-hidden="true"><use href="#i-edit"/></svg>Bearbeiten</a>
+      <a class="btn btn-ghost" href="/p/{{$c.ID}}/versions">Versionen</a>
       <form method="post" action="/p/{{$c.ID}}/delete" data-confirm="In den Papierkorb legen?"><button class="btn btn-ghost" type="submit"><svg width="14" height="14" aria-hidden="true"><use href="#i-trash"/></svg>Löschen</button></form>
       {{else}}
       <form method="post" action="/p/{{$c.ID}}/restore"><button class="btn btn-signal" type="submit">Wiederherstellen</button></form>
       {{end}}
     </div>
   </div>
-  <table class="usage">
-    <caption>Nutzung je Anbieter · gesamt {{$d.Prompt.UseCount}}× kopiert</caption>
-    <thead><tr><th>Anbieter</th><th>Kopiert</th><th>Zuletzt</th></tr></thead>
-    <tbody>{{range $d.Usage}}<tr><td><i class="mtab t-{{.Color}}"></i>{{.Name}}</td><td>{{.UseCount}}×</td><td>{{reltime .LastUsed}}</td></tr>{{end}}</tbody>
-  </table>
+
+  <div class="detail-grid">
+    <table class="usage">
+      <caption>Nutzung je Anbieter · gesamt {{$p.UseCount}}× kopiert</caption>
+      <thead><tr><th>Anbieter</th><th>Kopiert</th><th>Zuletzt</th></tr></thead>
+      <tbody>{{range $d.Usage}}<tr><td><i class="mtab t-{{.Color}}"></i>{{.Name}}</td><td>{{.UseCount}}×</td><td>{{reltime .LastUsed}}</td></tr>{{end}}</tbody>
+    </table>
+    {{if not $p.DeletedAt}}
+    <form method="post" action="/p/{{$c.ID}}/collections" class="col-pick">
+      <span class="label">Sammlungen</span>
+      {{range $d.Collections}}<label class="check"><input type="checkbox" name="collection" value="{{.ID}}"{{if .Member}} checked{{end}}> {{.Name}}</label>{{end}}
+      <input name="new" placeholder="Neue Sammlung …" maxlength="80" aria-label="Neue Sammlung">
+      <button class="btn btn-sm" type="submit">Speichern</button>
+    </form>
+    {{end}}
+  </div>
+
+  {{with $d.Similar}}
+  <section class="similar">
+    <h2 class="h2">Ähnliche Prompts</h2>
+    <ul class="list">{{range .}}{{template "row" .}}{{end}}</ul>
+  </section>
+  {{end}}
 </article>
 {{end}}

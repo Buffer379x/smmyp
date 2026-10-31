@@ -22,13 +22,16 @@ type Query struct {
 	Tags       []string // #tag, UND-verknüpft (normalisiert)
 	Favorites  bool     // fav:
 	UsedDays   int      // used:7d
+	Substrings []string // ~wort: Teilwortsuche (Trigram), mindestens 3 Zeichen
+	Rating     int      // bew:4 = mindestens 4 Sterne
+	Fuzzy      bool     // gesetzt, wenn die Ergebnisse aus der Teilwortsuche stammen (für die Markierung)
 }
 
 // Empty: keine Volltextsuche nötig (nur Filter oder gar nichts).
 func (q Query) HasText() bool { return len(q.Terms)+len(q.Phrases) > 0 }
 
 func (q Query) IsZero() bool {
-	return !q.HasText() && len(q.Excludes)+len(q.Providers)+len(q.Categories)+len(q.Tags) == 0 && !q.Favorites && q.UsedDays == 0
+	return !q.HasText() && len(q.Excludes)+len(q.Providers)+len(q.Categories)+len(q.Tags)+len(q.Substrings) == 0 && !q.Favorites && q.UsedDays == 0 && q.Rating == 0
 }
 
 // HighlightTerms liefert die Begriffe, die in Treffern markiert werden.
@@ -92,6 +95,14 @@ func Parse(input string) Query {
 				q.Favorites = true
 			} else {
 				q.Terms = appendUnique(q.Terms, "fav")
+			}
+		case strings.HasPrefix(tok, "~") && len(tok) > 1:
+			if w := cleanWord(tok[1:]); len([]rune(w)) >= 3 {
+				q.Substrings = appendUnique(q.Substrings, w)
+			}
+		case strings.HasPrefix(lower, "bew:"):
+			if n, err := strconv.Atoi(lower[4:]); err == nil && n >= 1 && n <= 5 {
+				q.Rating = n
 			}
 		case strings.HasPrefix(lower, "used:"):
 			v := strings.TrimSuffix(lower[5:], "d")
@@ -158,6 +169,23 @@ func (q Query) MatchExpr() string {
 	return strings.Join(parts, " AND ")
 }
 
+// TrigramExpr baut den Ausdruck für die Teilwortsuche. all=true nimmt zusätzlich Begriffe und Phrasen
+// (Rückfallmodus). ok=false, wenn ein Begriff kürzer als 3 Zeichen ist (Trigramme brauchen ≥ 3).
+func (q Query) TrigramExpr(all bool) (expr string, ok bool) {
+	words := append([]string{}, q.Substrings...)
+	if all {
+		words = append(append(words, q.Terms...), q.Phrases...)
+	}
+	var parts []string
+	for _, w := range words {
+		if len([]rune(w)) < 3 {
+			return "", false
+		}
+		parts = append(parts, quote(w))
+	}
+	return strings.Join(parts, " AND "), len(parts) > 0
+}
+
 // ExcludeExpr baut den Ausdruck für auszuschließende Wörter (ODER-verknüpft).
 func (q Query) ExcludeExpr() string {
 	var parts []string
@@ -184,6 +212,12 @@ func (q Query) String() string {
 	}
 	if q.UsedDays > 0 {
 		parts = append(parts, "used:"+strconv.Itoa(q.UsedDays)+"d")
+	}
+	if q.Rating > 0 {
+		parts = append(parts, "bew:"+strconv.Itoa(q.Rating))
+	}
+	for _, w := range q.Substrings {
+		parts = append(parts, "~"+w)
 	}
 	parts = append(parts, q.Terms...)
 	for _, p := range q.Phrases {
@@ -221,8 +255,18 @@ func isWord(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }
 
 // Highlight escaped text vollständig und markiert danach Treffer mit <mark>.
 // Begriffe treffen am Wortanfang (wie die Präfixsuche), Phrasen mit Leerzeichen ebenso.
-func Highlight(text string, terms []string) template.HTML {
-	if len(terms) == 0 || text == "" {
+func Highlight(text string, terms []string) template.HTML { return highlight(text, terms, nil) }
+
+// Mark markiert Treffer einer Query: Begriffe am Wortanfang, Teilwörter (~ bzw. Rückfallmodus) überall.
+func (q Query) Mark(text string) template.HTML {
+	if q.Fuzzy {
+		return highlight(text, nil, append(q.Substrings, q.HighlightTerms()...))
+	}
+	return highlight(text, q.HighlightTerms(), q.Substrings)
+}
+
+func highlight(text string, terms, anywhere []string) template.HTML {
+	if len(terms)+len(anywhere) == 0 || text == "" {
 		return template.HTML(html.EscapeString(text))
 	}
 	src := []rune(text)
@@ -231,7 +275,19 @@ func Highlight(text string, terms []string) template.HTML {
 		folded[i] = fold(r)
 	}
 	marked := make([]bool, len(src))
+	type needle struct {
+		text     string
+		anywhere bool
+	}
+	var needles []needle
 	for _, t := range terms {
+		needles = append(needles, needle{t, false})
+	}
+	for _, t := range anywhere {
+		needles = append(needles, needle{t, true})
+	}
+	for _, nd := range needles {
+		t := nd.text
 		needle := []rune(strings.ToLower(t))
 		for i := range needle {
 			needle[i] = fold(needle[i])
@@ -240,7 +296,7 @@ func Highlight(text string, terms []string) template.HTML {
 			continue
 		}
 		for i := 0; i+len(needle) <= len(folded); i++ {
-			if i > 0 && isWord(folded[i-1]) {
+			if !nd.anywhere && i > 0 && isWord(folded[i-1]) {
 				continue
 			}
 			match := true

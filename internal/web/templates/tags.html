@@ -1,0 +1,82 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1 class="h1">Tags &amp; KI-Hilfe</h1>
+<section class="panel">
+  <h2 class="h2">KI-Hilfe <small class="hint">(optional, eingebautes Machine Learning, ohne Internet)</small></h2>
+  {{if not .MLAllowed}}
+  <p>Die KI-Hilfe ist auf dieser Instanz abgeschaltet (<code>SMMYP_ML=off</code>).</p>
+  {{else if not .MLOn}}
+  <p><b>Ausgeschaltet.</b> Tags vergibst du von Hand; Regeln unten werden gespeichert, aber erst mit eingeschalteter KI-Hilfe angewendet.</p>
+  <p><a class="btn btn-sm" href="/settings">In den Einstellungen einschalten</a></p>
+  {{else}}
+  <ol class="ml-steps">
+    <li><b>Regeln &amp; Wörterbücher</b>: aktiv, auch ohne Bestand.</li>
+    <li><b>Ähnliche Prompts</b>: {{if $d.Status.KNNActive}}aktiv ({{$d.Status.Tagged}} getaggte Prompts){{else}}ab {{$d.MinKNN}} getaggten Prompts (aktuell {{$d.Status.Tagged}}){{end}}.</li>
+    <li><b>Gelernter Klassifikator</b>:
+      {{if not $d.Status.Models}}ab {{$d.MinModel}} Prompts mit mindestens 5 Beispielen je Tag.{{end}}
+      {{range $d.Status.Models}}<br>{{if eq .Kind "tags"}}Tags{{else}}Anbieter{{end}}: {{.Samples}} Beispiele, Trefferquote {{printf "%.0f" (pct .Quality)}} %, {{if .Active}}aktiv{{else}}inaktiv (unter {{printf "%.0f" (pct $d.QualityMin)}} %){{end}}, trainiert {{reltime .TrainedAt}}{{end}}
+    </li>
+  </ol>
+  <form method="post" action="/tags/train"><button class="btn btn-sm" type="submit">Jetzt neu trainieren</button></form>
+  <p class="hint">Vorschläge erscheinen beim Anlegen und in der Detailansicht. Übernehmen und Ablehnen fließt ins Lernen ein. Das Training läuft automatisch alle 5 Minuten, wenn sich etwas geändert hat.</p>
+  {{end}}
+</section>
+
+<section class="panel">
+  <h2 class="h2">Tags <span class="count">{{len $d.Tags}}</span></h2>
+  {{if $d.Tags}}
+  <div class="table-wrap"><table class="ptable">
+    <thead><tr><th>Tag</th><th>Prompts</th><th>Aliase</th></tr></thead>
+    <tbody>{{range $d.Tags}}<tr>
+      <td><a href="/?q=%23{{.Slug}}">#{{.Slug}}</a></td><td>{{.Count}}</td>
+      <td>{{range .Aliases}}<form method="post" action="/tags/aliases/delete" class="alias"><input type="hidden" name="alias" value="{{.}}"><span>{{.}}</span><button aria-label="Alias {{.}} löschen" title="löschen">×</button></form>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="hint">Noch keine Tags.</p>{{end}}
+  <div class="two">
+    <form method="post" action="/tags/rename" class="stack">
+      <h3 class="h3">Umbenennen oder zusammenführen</h3>
+      <label>Tag<input name="from" list="tag-list" required value="{{.Form.Get "from"}}"></label>
+      <label>Neuer Name <small>(bestehender Tag = zusammenführen)</small><input name="to" list="tag-list" required value="{{.Form.Get "to"}}"></label>
+      {{template "err" (index .Errors "tag")}}
+      <button class="btn" type="submit">Ändern</button>
+    </form>
+    <form method="post" action="/tags/aliases" class="stack">
+      <h3 class="h3">Alias anlegen</h3>
+      <label>Schreibweise<input name="alias" required placeholder="z. B. lofi" value="{{.Form.Get "alias"}}"></label>
+      <label>gehört zu Tag<input name="tag" list="tag-list" required value="{{.Form.Get "tag"}}"></label>
+      {{template "err" (index .Errors "alias")}}
+      <button class="btn" type="submit">Alias speichern</button>
+    </form>
+  </div>
+  <datalist id="tag-list">{{range $d.Tags}}<option value="{{.Slug}}">{{end}}</datalist>
+</section>
+
+<section class="panel">
+  <h2 class="h2">Eigene Regeln</h2>
+  {{if $d.Rules}}
+  <div class="table-wrap"><table class="ptable">
+    <thead><tr><th>Wenn</th><th>Muster</th><th>dann Tag</th><th>Kategorie</th><th>automatisch</th><th></th></tr></thead>
+    <tbody>{{range $d.Rules}}<tr>
+      <td>{{if eq .Kind "word"}}Wort{{else if eq .Kind "phrase"}}Phrase{{else}}Regex{{end}}</td><td><code>{{.Pattern}}</code></td><td>#{{.Tag}}</td>
+      <td>{{if .Category}}{{catLabel .Category}}{{else}}alle{{end}}</td><td>{{if .AutoApply}}ja{{else}}Vorschlag{{end}}</td>
+      <td><form method="post" action="/tags/rules/{{.ID}}/delete"><button class="btn btn-ghost btn-sm" type="submit">Löschen</button></form></td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{end}}
+  <form method="post" action="/tags/rules" class="stack">
+    <div class="two">
+      <label>Art<select name="kind"><option value="word">Wort</option><option value="phrase">Phrase</option><option value="regex">Regulärer Ausdruck</option></select></label>
+      <label>Muster<input name="pattern" required maxlength="200" placeholder="z. B. synthwave|retrowave" value="{{.Form.Get "pattern"}}"></label>
+    </div>
+    {{template "err" (index .Errors "pattern")}}
+    <div class="two">
+      <label>Tag<input name="tag" required list="tag-list" value="{{.Form.Get "tag"}}"></label>
+      <label>Nur für Kategorie<select name="category"><option value="">alle</option>{{range $d.Categories}}<option value="{{.Key}}">{{.Label}}</option>{{end}}</select></label>
+    </div>
+    {{template "err" (index .Errors "tag")}}
+    <label class="check"><input type="checkbox" name="auto" value="1"> Automatisch übernehmen (sonst nur Vorschlag)</label>
+    <button class="btn btn-signal" type="submit">Regel anlegen</button>
+  </form>
+</section>
+{{end}}

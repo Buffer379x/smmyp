@@ -25,6 +25,9 @@ type Config struct {
 	LogLevel       slog.Level
 	AdminUser      string
 	AdminPassword  string
+	ProxyHeader    string // z. B. Remote-User: Login über einen Reverse Proxy mit SSO (nur von TrustedProxies)
+	ProxyAutoUser  bool   // unbekannte Proxy-Benutzer automatisch anlegen
+	MLAllowed      bool   // SMMYP_ML=off schaltet die KI-Hilfe für die ganze Instanz ab
 }
 
 var hhmm = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
@@ -108,6 +111,18 @@ func Load(getenv func(string) string) (Config, error) {
 		return c, fmt.Errorf("SMMYP_LOG_LEVEL: erlaubt sind debug, info, warn, error")
 	}
 
+	switch get("SMMYP_ML", "on") {
+	case "on", "true", "1":
+		c.MLAllowed = true
+	case "off", "false", "0":
+	default:
+		return c, fmt.Errorf("SMMYP_ML: erlaubt sind on, off")
+	}
+	c.ProxyHeader = get("SMMYP_AUTH_PROXY_HEADER", "")
+	c.ProxyAutoUser = get("SMMYP_AUTH_PROXY_AUTOCREATE", "false") == "true"
+	if c.ProxyHeader != "" && len(c.TrustedProxies) == 0 {
+		return c, fmt.Errorf("SMMYP_AUTH_PROXY_HEADER braucht SMMYP_TRUSTED_PROXIES (sonst könnte jeder den Header setzen)")
+	}
 	if f := get("SMMYP_ADMIN_PASSWORD_FILE", ""); f != "" {
 		b, err := os.ReadFile(f)
 		if err != nil {

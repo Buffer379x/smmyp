@@ -7,10 +7,13 @@ Ein kleines, schnelles Prompt-Archiv für dein Heimnetz. SMMYP sammelt deine KI-
 - **Karteikasten statt Chatblase:** Jede KI ist eine Schublade mit farbigem Reiter, jeder Prompt eine Karteikarte. Karten- oder Listenansicht, hell oder dunkel.
 - **Ein Prompt, mehrere KIs:** Ein Prompt kann zu einem oder mehreren Anbietern gehören. Die Felder richten sich nach dem Anbieter: Suno Style/Lyrics/Exclude, Midjourney Prompt/Parameter, Claude System/Prompt. Jedes Feld hat einen eigenen Kopier-Button.
 - **Suche über alles oder gezielt:** `@suno dark #lofi "night drive" -country`, mit Live-Ergebnissen, Facetten je KI und markierten Treffern.
-- **Multiuser:** Private Sammlungen je Konto, neue Konten per Einladungslink.
+- **Platzhalter:** `{{genre}}` oder `{{bpm=98}}` im Prompt; beim Kopieren fragt SMMYP die Werte ab (zuletzt benutzte sind vorbelegt).
+- **Versionen, Sammlungen, Bewertung:** Jede Änderung wird als Version gesichert (mit Wort-Diff). Sammlungen bündeln Prompts quer über KIs, dazu Sterne und Ergebnis-Links.
+- **KI-Hilfe (optional, standardmäßig aus):** Tag- und Anbieter-Vorschläge über Wörterbücher, ähnliche eigene Prompts und einen Klassifikator, der aus deinen Tags lernt. Klassisches Machine Learning direkt im Programm, ohne Internet und ohne Sprachmodell.
+- **Multiuser:** Private Sammlungen je Konto, neue Konten per Einladungslink oder per SSO über den Reverse Proxy.
 - **Klein:** ein Go-Binary mit SQLite und ohne externe Dienste. Docker-Image ~20 MB, im Leerlauf < 40 MB RAM. Keine Verbindungen ins Internet.
 
-> **Stand 0.1-rc1:** Release-Kandidat. Siehe [Stand 0.1-rc1](#stand-01-rc1) für das, was noch fehlt.
+> **Stand:** 0.2.0 – siehe [CHANGELOG](CHANGELOG.md).
 
 ## Schnellstart (Docker Compose)
 
@@ -65,6 +68,9 @@ Das Template startet den Container mit `--user 0:0` und `PUID=99`/`PGID=100`. SM
 | `SMMYP_BACKUP_TIME` | `03:30` | Tägliches Backup, `off` = aus |
 | `SMMYP_BACKUP_KEEP` | `14` | Anzahl aufbewahrter Backups |
 | `SMMYP_ADMIN_USER` / `SMMYP_ADMIN_PASSWORD_FILE` | – | Ersten Admin automatisch anlegen (statt Setup-Token) |
+| `SMMYP_ML` | `on` | `off` schaltet die optionale KI-Hilfe für alle ab (Standard: jeder Benutzer kann sie in den Einstellungen einschalten) |
+| `SMMYP_AUTH_PROXY_HEADER` | – | z. B. `Remote-User`: Anmeldung über den SSO-Header eines Reverse Proxys (Authelia, Authentik). Nur von `SMMYP_TRUSTED_PROXIES` |
+| `SMMYP_AUTH_PROXY_AUTOCREATE` | `false` | unbekannte Proxy-Benutzer automatisch anlegen (der erste wird Admin) |
 | `SMMYP_LOG_LEVEL` | `info` | `debug` · `info` · `warn` · `error` |
 | `PUID` / `PGID` | `65532` | Nur wenn als root gestartet: Besitzer des Datenordners, danach wird root abgegeben |
 
@@ -90,6 +96,8 @@ Hinter dem Proxy `SMMYP_BASE_URL=https://…` und `SMMYP_TRUSTED_PROXIES` setzen
 | `f` | Favorit |
 | `n` | neuer Prompt |
 | `v` | Karten ↔ Liste |
+| `x` | Prompt auswählen (Liste, für Mehrfachaktionen) |
+| `Strg/⌘ K` | Befehlspalette |
 
 | Suche | Bedeutung |
 |---|---|
@@ -98,6 +106,8 @@ Hinter dem Proxy `SMMYP_BASE_URL=https://…` und `SMMYP_TRUSTED_PROXIES` setzen
 | `@suno` | nur Suno (mehrere `@…` = einer davon) |
 | `#lofi` | mit Tag (mehrere = alle) |
 | `-country` | ohne dieses Wort |
+| `~solo` | Teilwort (findet „Gitarrensolo“); bei sehr wenigen Treffern sucht SMMYP automatisch so |
+| `bew:4` | mindestens 4 Sterne |
 | `kat:musik` | alle Musik-KIs |
 | `fav:` · `used:7d` | Favoriten · in den letzten 7 Tagen benutzt |
 
@@ -117,13 +127,22 @@ echo 'neues-passwort-123' | docker exec -i smmyp /smmyp passwd <name>   # Passwo
 docker exec smmyp /smmyp version
 ```
 
-## Stand 0.1-rc1
+## KI-Hilfe (optional)
 
-Enthalten: siehe [CHANGELOG](CHANGELOG.md). Noch nicht enthalten (geplant für Phase 2):
+Standardmäßig **aus**. Einschalten unter *Einstellungen → KI-Hilfe*. Dann:
 
-- Platzhalter-Variablen `{{genre}}`, Versionen/Diff, Import
-- Auto-Tagging (eingebautes Machine Learning, ohne API), Tag-Aliase, Teilwortsuche (Trigramme)
-- Sammlungen, PWA/„Teilen →", Bookmarklet, Mehrfachauswahl, Proxy-Login (SSO)
+1. **Regeln & Wörterbücher:** Genres, Stimmungen, Tempo-Klassen aus „98 bpm", Bildformat aus `--ar` sowie eigene Regeln (*Tags & KI-Hilfe*).
+2. **Ähnliche Prompts:** ab 20 getaggten Prompts schlägt SMMYP Tags vor, die ähnliche eigene Prompts tragen.
+3. **Gelernter Klassifikator** (Complement Naive Bayes): ab 50 Prompts mit mindestens 5 Beispielen je Tag. Training alle 5 Minuten bei Änderungen, ein Modell je Benutzer. Ist die gemessene Trefferquote zu niedrig, bleibt dieser Teil stumm.
+
+Jeder Vorschlag nennt seinen Grund. Übernehmen und Ablehnen fließen ins Lernen ein. Inhalte aus *Exclude*/*Negativ-Prompt* werden ignoriert. Beim Ausschalten werden die Modelle gelöscht. Unabhängig von der Option laufen die Warnungen vor Duplikaten und vor versehentlich eingefügten API-Schlüsseln.
+
+## Weitere Funktionen
+
+- **Import:** *Menü → Import* nimmt SMMYP-Exporte (JSON) und Tabellen (CSV, Komma oder Semikolon) an. Inhaltsgleiche Prompts werden übersprungen.
+- **Bookmarklet:** Unter *Einstellungen* gibt es einen Lesezeichen-Link, der markierten Text samt Quelle ins Formular übernimmt.
+- **App-Installation (PWA):** Mit HTTPS installierbar, auf Android mit „Teilen → SMMYP", dazu ein Offline-Lesecache für besuchte Seiten.
+- **Tag-Verwaltung:** Umbenennen und Zusammenführen (der alte Name wird automatisch Alias), eigene Aliase.
 
 ## Entwicklung
 

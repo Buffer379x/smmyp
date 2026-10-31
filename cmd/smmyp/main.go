@@ -19,6 +19,7 @@ import (
 	_ "time/tzdata" // Zeitzonen auch im distroless-Image
 
 	"github.com/Buffer379x/smmyp/internal/auth"
+	"github.com/Buffer379x/smmyp/internal/autotag"
 	"github.com/Buffer379x/smmyp/internal/backup"
 	"github.com/Buffer379x/smmyp/internal/config"
 	"github.com/Buffer379x/smmyp/internal/prompts"
@@ -149,9 +150,14 @@ func serve() error {
 		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 120 * time.Second,
 		MaxHeaderBytes: 64 << 10,
 	}
-	httpSrv.Handler = http.MaxBytesHandler(httpSrv.Handler, 512<<10)
+	httpSrv.Handler = http.MaxBytesHandler(httpSrv.Handler, 6<<20) // Import bis 5 MB
 
-	go background(ctx, cfg, db, backupDir, log)
+	if n, err := (&prompts.Service{DB: db}).Backfill(ctx); err != nil {
+		log.Error("Nachberechnung SimHash/Sprache", "err", err)
+	} else if n > 0 {
+		log.Info("SimHash und Sprache für bestehende Prompts berechnet", "prompts", n)
+	}
+	go background(ctx, cfg, db, backupDir, log, srv.Autotag())
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -173,7 +179,7 @@ func serve() error {
 }
 
 // background: tägliches Backup, Papierkorb leeren, abgelaufene Sessions entfernen.
-func background(ctx context.Context, cfg config.Config, db *store.DB, backupDir string, log *slog.Logger) {
+func background(ctx context.Context, cfg config.Config, db *store.DB, backupDir string, log *slog.Logger, at *autotag.Service) {
 	ps := &prompts.Service{DB: db}
 	as := &auth.Service{DB: db}
 	housekeeping := func() {
@@ -187,8 +193,16 @@ func background(ctx context.Context, cfg config.Config, db *store.DB, backupDir 
 		}
 	}
 	housekeeping()
+	train := func() {
+		if _, err := at.TrainDirty(ctx); err != nil {
+			log.Error("ML-Training", "err", err)
+		}
+		at.Evict()
+	}
+	train()
 	lastBackup := ""
 	lastHousekeeping := time.Now()
+	lastTraining := time.Now()
 	t := time.NewTicker(30 * time.Second)
 	defer t.Stop()
 	for {
@@ -203,6 +217,10 @@ func background(ctx context.Context, cfg config.Config, db *store.DB, backupDir 
 				} else {
 					log.Info("Backup erstellt", "file", filepath.Base(path))
 				}
+			}
+			if now.Sub(lastTraining) >= 5*time.Minute {
+				lastTraining = now
+				train()
 			}
 			if now.Sub(lastHousekeeping) > time.Hour {
 				lastHousekeeping = now

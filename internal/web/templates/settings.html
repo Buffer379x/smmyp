@@ -9,6 +9,13 @@
       <label><input type="radio" name="theme" value="light"{{if eq .Theme "light"}} checked{{end}}> Papier (hell)</label>
       <label><input type="radio" name="theme" value="dark"{{if eq .Theme "dark"}} checked{{end}}> Dunkelkammer</label>
     </fieldset>
+    {{if .MLAllowed}}
+    <fieldset class="seg-field ml-opt"><legend>KI-Hilfe (optional)</legend>
+      <input type="hidden" name="ml_set" value="1">
+      <label class="check"><input type="checkbox" name="ml" value="1"{{if .MLOn}} checked{{end}}> Auto-Tagging und Machine Learning einschalten</label>
+      <p class="hint">Schlägt beim Anlegen Tags und Anbieter vor, wendet eigene Regeln automatisch an und lernt aus deinen Tags und Klicks. Läuft vollständig auf diesem Server, ohne Internet und ohne Sprachmodell. Beim Ausschalten werden die gelernten Modelle gelöscht.</p>
+    </fieldset>
+    {{end}}
     <fieldset class="seg-field"><legend>Standardansicht</legend>
       <label><input type="radio" name="view" value="cards"{{if eq .View "cards"}} checked{{end}}> Karten</label>
       <label><input type="radio" name="view" value="list"{{if eq .View "list"}} checked{{end}}> Liste</label>
@@ -32,7 +39,13 @@
   <form method="post" action="/settings/logout-all" data-confirm="Auf allen Geräten abmelden?"><button class="btn btn-ghost" type="submit">Auf allen Geräten abmelden</button></form>
 </section>
 <section class="panel">
+  <h2 class="h2">Schnell erfassen</h2>
+  <p>Zieh diesen Link in deine Lesezeichenleiste. Markiere auf einer Seite (z. B. bei Suno oder Claude) einen Prompt und klicke das Lesezeichen: SMMYP öffnet das Formular mit Text, Titel und Quelle, der Anbieter wird erkannt.</p>
+  <p><a class="btn bookmarklet" href="{{.Data}}">→ SMMYP</a></p>
+  <p class="hint">Auf Android mit HTTPS: SMMYP als App installieren, dann erscheint es im „Teilen“-Menü jeder App.</p>
+</section>
+<section class="panel">
   <h2 class="h2">Tastatur</h2>
-  <p class="hint keys"><kbd>/</kbd> Suche · <kbd>Esc</kbd> Suche leeren · <kbd>j</kbd>/<kbd>k</kbd> Karte wählen · <kbd>Enter</kbd> öffnen · <kbd>c</kbd> kopieren · <kbd>f</kbd> Favorit · <kbd>n</kbd> neuer Prompt · <kbd>v</kbd> Karten/Liste</p>
+  <p class="hint keys"><kbd>/</kbd> Suche · <kbd>Esc</kbd> Suche leeren · <kbd>j</kbd>/<kbd>k</kbd> Karte wählen · <kbd>Enter</kbd> öffnen · <kbd>c</kbd> kopieren · <kbd>f</kbd> Favorit · <kbd>n</kbd> neuer Prompt · <kbd>v</kbd> Karten/Liste · <kbd>x</kbd> auswählen (Liste) · <kbd>⌘K</kbd>/<kbd>Strg K</kbd> Befehle</p>
 </section>
 {{end}}

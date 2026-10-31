@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Buffer379x/smmyp/internal/auth"
+	"github.com/Buffer379x/smmyp/internal/autotag"
 	"github.com/Buffer379x/smmyp/internal/config"
 	"github.com/Buffer379x/smmyp/internal/prompts"
 	"github.com/Buffer379x/smmyp/internal/store"
@@ -31,6 +32,7 @@ type Server struct {
 	db        *store.DB
 	auth      *auth.Service
 	prompts   *prompts.Service
+	autotag   *autotag.Service
 	log       *slog.Logger
 	version   string
 	backupDir string
@@ -62,11 +64,19 @@ func New(o Options) (*Server, error) {
 	if s.log == nil {
 		s.log = slog.Default()
 	}
+	s.autotag = autotag.New(o.DB, s.prompts, s.log)
+	s.autotag.Allowed = o.Config.MLAllowed
 	if err := s.loadTemplates(); err != nil {
 		return nil, err
 	}
 	return s, nil
 }
+
+// mlOn: KI-Hilfe (Auto-Tagging, Machine Learning) ist für die Instanz erlaubt und vom Benutzer eingeschaltet.
+func (s *Server) mlOn(u *auth.User) bool { return u != nil && s.cfg.MLAllowed && u.Settings.ML }
+
+// Autotag gibt die KI-Hilfe frei (Hintergrund-Training in main).
+func (s *Server) Autotag() *autotag.Service { return s.autotag }
 
 // SetupToken liefert (und erzeugt bei Bedarf) das einmalige Token für das Erst-Setup.
 func (s *Server) SetupToken(ctx context.Context) string {
@@ -104,6 +114,13 @@ func (s *Server) Handler() http.Handler {
 		http.ServeFileFS(w, r, static, "favicon.svg")
 	})
 	mux.HandleFunc("GET /healthz", s.healthz)
+	mux.HandleFunc("GET /manifest.webmanifest", s.manifest)
+	mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Service-Worker-Allowed", "/")
+		http.ServeFileFS(w, r, static, "sw.js")
+	})
 
 	mux.HandleFunc("GET /setup", s.setupForm)
 	mux.HandleFunc("POST /setup", s.setupSubmit)
@@ -166,6 +183,32 @@ func (s *Server) routes() []route {
 		{"POST /admin/users/{id}/enable", a(s.adminEnable)},
 		{"POST /admin/backup", a(s.adminBackup)},
 		{"GET /admin/backups/{name}", a(s.adminBackupDownload)},
+		// Phase 2
+		{"GET /p/{id}/versions", u(s.promptVersions)},
+		{"POST /p/{id}/versions/{vid}/restore", u(s.promptVersionRestore)},
+		{"GET /p/{id}/vars", u(s.promptVarsGet)},
+		{"POST /p/{id}/vars", u(s.promptVarsSave)},
+		{"POST /p/{id}/tags", u(s.promptTagSuggestion)},
+		{"POST /p/{id}/collections", u(s.promptCollections)},
+		{"POST /api/suggest", u(s.apiSuggest)},
+		{"GET /api/palette", u(s.apiPalette)},
+		{"POST /bulk", u(s.bulk)},
+		{"GET /tags", u(s.tagsPage)},
+		{"POST /tags/rename", u(s.tagRename)},
+		{"POST /tags/aliases", u(s.tagAliasAdd)},
+		{"POST /tags/aliases/delete", u(s.tagAliasDelete)},
+		{"POST /tags/rules", u(s.tagRuleAdd)},
+		{"POST /tags/rules/{id}/delete", u(s.tagRuleDelete)},
+		{"POST /tags/train", u(s.tagTrain)},
+		{"GET /c", u(s.collectionsPage)},
+		{"POST /c", u(s.collectionCreate)},
+		{"GET /c/{id}", u(s.collectionShow)},
+		{"POST /c/{id}", u(s.collectionUpdate)},
+		{"POST /c/{id}/delete", u(s.collectionDelete)},
+		{"POST /c/{id}/remove", u(s.collectionRemove)},
+		{"GET /import", u(s.importPage)},
+		{"POST /import", u(s.importSubmit)},
+		{"GET /share", u(s.share)},
 	}
 }
 
@@ -319,13 +362,45 @@ const sessionCookie = "smmyp_session"
 
 func (s *Server) loadUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if c, err := r.Cookie(sessionCookie); err == nil && !strings.HasPrefix(r.URL.Path, "/static/") {
+		if strings.HasPrefix(r.URL.Path, "/static/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if c, err := r.Cookie(sessionCookie); err == nil {
 			if u, err := s.auth.SessionUser(r.Context(), c.Value); err == nil {
 				r = r.WithContext(context.WithValue(r.Context(), userKey, &u))
 			}
 		}
+		if currentUser(r) == nil && s.cfg.ProxyHeader != "" {
+			if u := s.proxyUser(r); u != nil {
+				r = r.WithContext(context.WithValue(r.Context(), userKey, u))
+			}
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// proxyUser: Anmeldung über den SSO-Header des Reverse Proxys, nur wenn die Verbindung von einem
+// vertrauenswürdigen Proxy kommt (TC-SEC-04). Sonst wird der Header ignoriert.
+func (s *Server) proxyUser(r *http.Request) *auth.User {
+	name := strings.TrimSpace(r.Header.Get(s.cfg.ProxyHeader))
+	if name == "" {
+		return nil
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return nil
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil || !s.trusted(addr) {
+		s.log.Warn("Proxy-Login-Header von nicht vertrauenswürdiger Adresse ignoriert", "ip", host)
+		return nil
+	}
+	u, err := s.auth.ProxyUser(r.Context(), name, s.cfg.ProxyAutoUser)
+	if err != nil {
+		return nil
+	}
+	return &u
 }
 
 func (s *Server) requireUser(h func(http.ResponseWriter, *http.Request, *auth.User)) http.Handler {

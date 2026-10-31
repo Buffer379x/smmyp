@@ -1,0 +1,19 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1 class="h1">Sammlungen <span class="count">{{len $d.Collections}}</span></h1>
+<p class="hint">Sammlungen bündeln Prompts quer über alle KIs, z. B. ein Album-Projekt mit Suno-Styles, Midjourney-Cover und Claude-Texten.</p>
+{{if $d.Collections}}
+<ul class="list col-list">{{range $d.Collections}}
+  <li class="row"><span class="row-main"><a class="row-title" href="/c/{{.ID}}">{{.Name}}</a><span class="row-snip">{{with .Notes}}{{.}}{{else}}geändert {{reltime .UpdatedAt}}{{end}}</span></span><span class="row-uses">{{.Count}}</span></li>
+{{end}}</ul>
+{{end}}
+<section class="panel">
+  <h2 class="h2">Neue Sammlung</h2>
+  <form method="post" action="/c" class="stack">
+    <label>Name<input name="name" required maxlength="80" value="{{.Form.Get "name"}}" placeholder="z. B. Album Nachtfahrt"></label>
+    {{template "err" (index .Errors "name")}}
+    <label>Notizen <small>(optional)</small><textarea name="notes" rows="2">{{.Form.Get "notes"}}</textarea></label>
+    <button class="btn btn-signal" type="submit">Anlegen</button>
+  </form>
+</section>
+{{end}}

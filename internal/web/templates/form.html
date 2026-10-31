@@ -3,17 +3,28 @@
 <section class="panel">
   <h1 class="h1">{{.Title}}</h1>
   {{if $d.Duplicate}}
-  <div class="flash flash-error">Einen inhaltsgleichen Prompt gibt es schon: <a href="/p/{{$d.Duplicate}}">Original ansehen</a>. Unten auf „Trotzdem speichern" klicken, um ihn doppelt anzulegen.</div>
+  <div class="flash flash-error">Einen inhaltsgleichen Prompt gibt es schon: <a href="/p/{{$d.Duplicate}}">Original ansehen</a>.</div>
+  {{else if $d.NearID}}
+  <div class="flash flash-error">Ein sehr ähnlicher Prompt existiert bereits: <a href="/p/{{$d.NearID}}">{{$d.NearTitle}}</a>.</div>
+  {{end}}
+  {{with $d.Secrets}}
+  <div class="flash flash-error">Achtung: Der Text enthält vermutlich einen geheimen Schlüssel ({{join . ", "}}). Bitte prüfen und entfernen, bevor du speicherst.</div>
   {{end}}
   {{template "err" (index .Errors "form")}}
-  <form method="post" action="{{$d.Action}}" class="stack prompt-form" id="prompt-form">
-    {{if $d.Duplicate}}<input type="hidden" name="dup_ok" value="1">{{end}}
+  <form method="post" action="{{$d.Action}}" class="stack prompt-form" id="prompt-form" data-id="{{$d.ID}}">
+    <input type="hidden" name="id" value="{{$d.ID}}">
+    <input type="hidden" name="source_url" value="{{$d.SourceURL}}">
+    <input type="hidden" name="suggested" id="suggested" value="">
+    <input type="hidden" name="rejected" id="rejected" value="">
+    {{if or $d.Duplicate $d.NearID}}<label class="check warn"><input type="checkbox" name="dup_ok" value="1" required> Trotzdem als eigenen Prompt speichern</label>{{end}}
+    {{if $d.Secrets}}<label class="check warn"><input type="checkbox" name="secret_ok" value="1" required> Ich habe geprüft, der Text darf so gespeichert werden</label>{{end}}
     <label>Titel<input name="title" required maxlength="200" value="{{$d.Title}}" autofocus></label>
     {{template "err" (index .Errors "title")}}
 
     <fieldset class="providers-pick">
       <legend>Anbieter <small>(einer oder mehrere; ● = Hauptanbieter)</small></legend>
       {{template "err" (index .Errors "providers")}}
+      <div class="provider-suggest" id="provider-suggest" hidden></div>
       {{range $d.Categories}}
       <div class="pick-cat">
         <p class="rail-cat">{{.Label}}</p>
@@ -37,18 +48,33 @@
       </label>
       {{template "err" (index $.Errors (printf "field_%s" .Key))}}
       {{end}}
+      <p class="hint">Platzhalter: <code>{{"{{"}}genre{{"}}"}}</code> oder mit Standardwert <code>{{"{{"}}bpm=98{{"}}"}}</code>. Beim Kopieren fragt SMMYP die Werte ab. <code>\{{"{{"}}</code> schreibt wörtliche Klammern.</p>
+      <label class="check"><input type="checkbox" name="vars_off" value="1"{{if $d.VarsOff}} checked{{end}}> Platzhalter in diesem Prompt nicht auswerten (z. B. bei Jinja-Templates)</label>
+      <p class="hint" id="vars-found" hidden></p>
     </div>
 
     <div class="two">
-      <label>Tags <small>(Komma-getrennt)</small><input name="tags" value="{{$d.Tags}}" list="tag-hints" autocomplete="off"></label>
+      <label>Tags <small>(Komma-getrennt)</small><input name="tags" id="tags-input" value="{{$d.Tags}}" list="tag-hints" autocomplete="off"></label>
       <label>Modell / Version <small>(optional)</small><input name="model" maxlength="60" value="{{$d.Model}}" placeholder="z. B. v4.5, Opus, v7"></label>
     </div>
     {{template "err" (index .Errors "tags")}}
+    <div class="suggest-box" id="tag-suggest" hidden>
+      <span class="label">Vorschläge <small>(+ übernimmt, × lehnt ab; beides hilft beim Lernen)</small></span>
+      <ul class="tags suggestions" id="tag-suggest-list"></ul>
+    </div>
     <datalist id="tag-hints">{{range $d.TagHints}}<option value="{{.}}">{{end}}</datalist>
+
+    <fieldset class="seg-field rating-pick"><legend>Bewertung</legend>
+      <label><input type="radio" name="rating" value="0"{{if eq $d.Rating 0}} checked{{end}}> keine</label>
+      {{range $d.Ratings}}<label><input type="radio" name="rating" value="{{.}}"{{if eq $d.Rating .}} checked{{end}}> {{stars .}}</label>{{end}}
+    </fieldset>
+    {{template "err" (index .Errors "rating")}}
     <label>Notizen <small>(was hat funktioniert?)</small><textarea name="notes" rows="3">{{$d.Notes}}</textarea></label>
+    <label>Ergebnis-Links <small>(eine Zeile je Link, optional „Titel | URL“)</small><textarea name="links" rows="2" placeholder="Song v2 | https://suno.com/song/…">{{$d.Links}}</textarea></label>
+    {{template "err" (index .Errors "links")}}
     <label class="check"><input type="checkbox" name="favorite" value="1"{{if $d.Favorite}} checked{{end}}> Favorit</label>
     <div class="form-actions">
-      <button class="btn btn-signal" type="submit">{{if $d.Duplicate}}Trotzdem speichern{{else}}Speichern{{end}}</button>
+      <button class="btn btn-signal" type="submit">Speichern</button>
       <a class="btn btn-ghost" href="{{if $d.ID}}/p/{{$d.ID}}{{else}}/{{end}}">Abbrechen</a>
     </div>
   </form>

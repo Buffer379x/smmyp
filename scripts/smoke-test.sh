@@ -81,8 +81,8 @@ fi
 echo "== Unraid-Weg: --user 0:0 mit PUID/PGID"
 mkdir -p "$TMP/puid"
 docker run -d --name "$NAME-puid" --user 0:0 -e PUID="$(id -u)" -e PGID="$(id -g)" -v "$TMP/puid:/data" "$IMAGE" >/dev/null
-sleep 3
-docker logs "$NAME-puid" 2>&1 | grep -q "root abgegeben" || fail "PUID/PGID: root nicht abgegeben"
+for i in $(seq 1 20); do docker logs "$NAME-puid" 2>&1 | grep -q "SMMYP gestartet" && break; sleep 1; done
+docker logs "$NAME-puid" 2>&1 | grep -q "root abgegeben" || { docker logs "$NAME-puid" >&2; fail "PUID/PGID: root nicht abgegeben"; }
 U=$(top_user "$NAME-puid")
 is_user "$U" "$(id -u)" || fail "PUID: läuft als $U"
 [ -f "$TMP/puid/smmyp.db" ] || fail "PUID: Datenbank fehlt"

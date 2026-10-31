@@ -26,7 +26,7 @@ func TestParse(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 	for k, v := range map[string]string{"SMMYP_BASE_URL": "ftp://x", "SMMYP_BACKUP_TIME": "25:00", "SMMYP_REGISTRATION": "alle",
-		"SMMYP_TRUSTED_PROXIES": "kein-netz", "SMMYP_BACKUP_KEEP": "0", "SMMYP_LOG_LEVEL": "laut"} {
+		"SMMYP_TRUSTED_PROXIES": "kein-netz", "SMMYP_BACKUP_KEEP": "0", "SMMYP_LOG_LEVEL": "laut", "SMMYP_AUTH_PROXY_HEADER": "Remote-User"} {
 		if _, err := Load(env(map[string]string{k: v})); err == nil {
 			t.Errorf("%s=%s sollte abgelehnt werden", k, v)
 		}

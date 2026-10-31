@@ -6,6 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>{{.Title}} · SMMYP</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="theme-color" content="#1F1A16">
 <link rel="stylesheet" href="/static/app.css?v={{.Version}}">
 <script src="/static/app.js?v={{.Version}}" defer></script>
 </head>
@@ -46,9 +49,13 @@
       <div class="menu-pop">
         <p class="menu-who">{{.User.Username}}{{if .User.Admin}} · Admin{{end}}</p>
         <a href="/settings">Einstellungen</a>
+        <a href="/tags">Tags &amp; KI-Hilfe</a>
+        <a href="/c">Sammlungen</a>
         <a href="/providers">Anbieter</a>
         <a href="/trash">Papierkorb</a>
+        <a href="/import">Import</a>
         <a href="/export.json">Export (JSON)</a>
+        <button type="button" data-palette>Befehle … <kbd>⌘K</kbd></button>
         {{if .User.Admin}}<a href="/admin">Verwaltung</a>{{end}}
         <form method="post" action="/logout"><button type="submit">Abmelden</button></form>
       </div>
@@ -62,8 +69,11 @@
       <p class="rail-cat">{{.Label}}</p>
       {{range .Drawer}}<a class="drawer t-{{.Color}}{{if eq $.Rail.Active .Slug}} is-active{{end}}" href="/?a={{.Slug}}"><i></i>{{.Name}}<span>{{.Count}}</span></a>{{end}}
     {{end}}
+    <p class="rail-cat"><a href="/c">Sammlungen</a></p>
+    {{range .Collections}}<a class="drawer drawer-col{{if eq $.Rail.Active (printf "c%d" .ID)}} is-active{{end}}" href="/c/{{.ID}}"><i></i>{{.Name}}<span>{{.Count}}</span></a>{{end}}
+    {{if not .Collections}}<a class="drawer drawer-add" href="/c">+ Sammlung anlegen</a>{{end}}
     {{with .TopTags}}
-      <p class="rail-cat">Häufige Tags</p>
+      <p class="rail-cat"><a href="/tags">Häufige Tags</a></p>
       <div class="tagcloud">{{range .}}<a href="/?q=%23{{.Slug}}">#{{.Slug}}</a>{{end}}</div>
     {{end}}
     <p class="rail-cat">Ablage</p>
@@ -81,6 +91,20 @@
   </main>
 </div>
 </div>
+{{end}}
+{{if not .Plain}}
+<dialog id="vars-dialog" class="dlg" aria-labelledby="vars-title">
+  <form method="dialog" id="vars-form">
+    <h2 class="h2" id="vars-title">Platzhalter ausfüllen</h2>
+    <div id="vars-fields" class="stack"></div>
+    <div class="form-actions"><button class="btn btn-signal" value="ok" type="submit">Kopieren</button><button class="btn btn-ghost" value="cancel" type="button" data-close>Abbrechen</button></div>
+  </form>
+</dialog>
+<dialog id="palette" class="dlg dlg-palette" aria-label="Befehlspalette">
+  <input id="palette-q" type="search" placeholder="Befehl oder Prompt suchen …" autocomplete="off" spellcheck="false">
+  <ul id="palette-list" role="listbox"></ul>
+  <p class="hint">↑ ↓ wählen · Enter ausführen · Esc schließen</p>
+</dialog>
 {{end}}
 <p class="sr" aria-live="polite" id="live"></p>
 </body>

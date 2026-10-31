@@ -1,0 +1,26 @@
+{{define "content"}}
+{{$d := .Data}}
+<p class="back"><a href="/p/{{$d.Prompt.ID}}">← {{$d.Prompt.Title}}</a></p>
+<h1 class="h1">Versionen <span class="count">{{len $d.Versions}}</span></h1>
+{{if not $d.Versions}}
+  <div class="empty"><h2>Noch keine früheren Fassungen.</h2><p>Sobald du Titel, Felder oder Notizen änderst, sichert SMMYP die vorherige Fassung hier (bis zu 50).</p></div>
+{{else}}
+<div class="versions">
+  <ul class="version-list">
+    {{range $d.Versions}}<li{{if .Selected}} class="is-on"{{end}}><a href="/p/{{$d.Prompt.ID}}/versions?v={{.ID}}">{{date .CreatedAt}}</a> <span>{{reltime .CreatedAt}}</span></li>{{end}}
+  </ul>
+  <div class="diff-pane">
+    <p class="hint">Unterschiede von der Fassung vom <b>{{date $d.FromDate}}</b> zur aktuellen Fassung: <del class="diff-del">entfernt</del> <ins class="diff-ins">hinzugefügt</ins></p>
+    {{if not $d.Diffs}}<p>Inhaltlich gleich (nur Anbieter, Tags oder Einstellungen wurden geändert).</p>{{end}}
+    {{range $d.Diffs}}
+    <div class="field field-full"><span class="label">{{.Label}}</span>
+      <pre class="diff">{{range .Ops}}{{if eq .Kind 1}}<del class="diff-del">{{.Text}}</del>{{else if eq .Kind 2}}<ins class="diff-ins">{{.Text}}</ins>{{else}}{{.Text}}{{end}}{{end}}</pre>
+    </div>
+    {{end}}
+    <form method="post" action="/p/{{$d.Prompt.ID}}/versions/{{$d.FromID}}/restore" data-confirm="Diese Fassung wiederherstellen? Die aktuelle wird als Version gesichert.">
+      <button class="btn btn-signal" type="submit">Diese Fassung wiederherstellen</button>
+    </form>
+  </div>
+</div>
+{{end}}
+{{end}}

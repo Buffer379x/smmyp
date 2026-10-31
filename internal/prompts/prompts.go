@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Buffer379x/smmyp/internal/ml"
 	"github.com/Buffer379x/smmyp/internal/providers"
 	"github.com/Buffer379x/smmyp/internal/store"
 	"github.com/Buffer379x/smmyp/internal/tags"
@@ -22,7 +23,15 @@ const (
 	MaxFieldLen = 50_000
 	MaxTitleLen = 200
 	TrashDays   = 30
+	MaxLinks    = 20
+	MaxVersions = 50
 )
+
+// Link: Ergebnis-Link am Prompt (z. B. Suno-Song, Chat-Verlauf).
+type Link struct {
+	Label string
+	URL   string
+}
 
 // Linked ist ein zugeordneter Anbieter inklusive Nutzung für genau diesen Anbieter.
 type Linked struct {
@@ -44,8 +53,32 @@ type Prompt struct {
 	CreatedAt  int64
 	UpdatedAt  int64
 	DeletedAt  int64
+	Rating     int
+	SimHash    uint64
+	Language   string
+	SourceURL  string
+	VarsOff    bool
 	Providers  []Linked // [0] = Hauptanbieter
 	Tags       []string
+	Links      []Link // nur über Get geladen
+}
+
+// Text liefert alle Inhalte für Analyse (ML, SimHash, Geheimnis-Prüfung).
+func (p Prompt) Text() string { return joinText(p.Title, p.Fields) }
+
+func joinText(title string, fields map[string]string) string {
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	b.WriteString(title)
+	for _, k := range keys {
+		b.WriteString("\n")
+		b.WriteString(fields[k])
+	}
+	return b.String()
 }
 
 // Primary liefert den Hauptanbieter.
@@ -84,6 +117,10 @@ type Input struct {
 	Model       string
 	Tags        []string
 	Favorite    bool
+	Rating      int // 0 = keine Bewertung
+	SourceURL   string
+	VarsOff     bool
+	Links       []Link
 }
 
 // ValidationError: Feld → Meldung, für die Anzeige am Formularfeld.
@@ -157,7 +194,33 @@ func (s *Service) validate(ctx context.Context, sc store.Scope, in *Input) ([]pr
 	if len(tg) > tags.MaxPerPrompt {
 		verr["tags"] = fmt.Sprintf("Höchstens %d Tags.", tags.MaxPerPrompt)
 	}
+	if tg, err = tags.Resolve(ctx, s.DB.R, sc.UserID, tg); err != nil {
+		return nil, err
+	}
 	in.Tags = tg
+	if in.Rating < 0 || in.Rating > 5 {
+		verr["rating"] = "Bewertung 1 bis 5."
+	}
+	in.SourceURL = strings.TrimSpace(in.SourceURL)
+	if in.SourceURL != "" && (!validURL(in.SourceURL) || len(in.SourceURL) > 500) {
+		in.SourceURL = "" // Quelle ist optional und kommt aus Bookmarklet/Teilen; ungültige wird verworfen
+	}
+	var links []Link
+	for _, l := range in.Links {
+		l.URL, l.Label = strings.TrimSpace(l.URL), strings.TrimSpace(l.Label)
+		if l.URL == "" {
+			continue
+		}
+		if !validURL(l.URL) || len(l.URL) > 1000 || len([]rune(l.Label)) > 100 {
+			verr["links"] = "Links müssen mit http:// oder https:// beginnen (höchstens 1000 Zeichen)."
+			continue
+		}
+		links = append(links, l)
+	}
+	if len(links) > MaxLinks {
+		verr["links"] = fmt.Sprintf("Höchstens %d Links.", MaxLinks)
+	}
+	in.Links = links
 	if len(verr) > 0 {
 		return nil, verr
 	}
@@ -196,10 +259,13 @@ func (s *Service) Create(ctx context.Context, sc store.Scope, in Input) (int64, 
 	}
 	now := store.Now().Unix()
 	fj, _ := json.Marshal(in.Fields)
+	text := joinText(in.Title, in.Fields)
 	var id int64
 	err = s.DB.Tx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `INSERT INTO prompts(owner_id, title, fields, notes, model, is_favorite, content_hash, created_at, updated_at)
-			VALUES (?,?,?,?,?,?,?,?,?)`, sc.UserID, in.Title, string(fj), in.Notes, in.Model, in.Favorite, contentHash(in.Title, in.Fields), now, now)
+		res, err := tx.ExecContext(ctx, `INSERT INTO prompts(owner_id, title, fields, notes, model, is_favorite, content_hash, created_at, updated_at,
+			rating, simhash, language, source_url, vars_off)
+			VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, sc.UserID, in.Title, string(fj), in.Notes, in.Model, in.Favorite, contentHash(in.Title, in.Fields), now, now,
+			nullRating(in.Rating), int64(ml.SimHash(text)), ml.Language(text), in.SourceURL, in.VarsOff)
 		if err != nil {
 			return err
 		}
@@ -207,6 +273,9 @@ func (s *Service) Create(ctx context.Context, sc store.Scope, in Input) (int64, 
 			return err
 		}
 		if err := setProviders(ctx, tx, sc.UserID, id, provs); err != nil {
+			return err
+		}
+		if err := setLinks(ctx, tx, id, in.Links); err != nil {
 			return err
 		}
 		if err := tags.Set(ctx, tx, sc.UserID, id, in.Tags); err != nil {
@@ -223,17 +292,40 @@ func (s *Service) Update(ctx context.Context, sc store.Scope, id int64, in Input
 		return err
 	}
 	fj, _ := json.Marshal(in.Fields)
+	text := joinText(in.Title, in.Fields)
 	return s.DB.Tx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE prompts SET title=?, fields=?, notes=?, model=?, is_favorite=?, content_hash=?, updated_at=?
-			WHERE id=? AND owner_id=? AND deleted_at IS NULL`,
-			in.Title, string(fj), in.Notes, in.Model, in.Favorite, contentHash(in.Title, in.Fields), store.Now().Unix(), id, sc.UserID)
+		// Alte Fassung als Version sichern, wenn sich Titel, Felder oder Notizen ändern.
+		var oldTitle, oldFields, oldNotes string
+		err := tx.QueryRowContext(ctx, "SELECT title, fields, notes FROM prompts WHERE id = ? AND owner_id = ? AND deleted_at IS NULL", id, sc.UserID).
+			Scan(&oldTitle, &oldFields, &oldNotes)
+		if errors.Is(err, sql.ErrNoRows) {
+			return store.ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		now := store.Now().Unix()
+		if oldTitle != in.Title || oldFields != string(fj) || oldNotes != in.Notes {
+			if _, err := tx.ExecContext(ctx, "INSERT INTO prompt_versions(prompt_id, title, fields, notes, created_at) VALUES (?,?,?,?,?)",
+				id, oldTitle, oldFields, oldNotes, now); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM prompt_versions WHERE prompt_id = ? AND id NOT IN
+				(SELECT id FROM prompt_versions WHERE prompt_id = ? ORDER BY id DESC LIMIT ?)`, id, id, MaxVersions); err != nil {
+				return err
+			}
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE prompts SET title=?, fields=?, notes=?, model=?, is_favorite=?, content_hash=?, updated_at=?,
+			rating=?, simhash=?, language=?, source_url=?, vars_off=?
+			WHERE id=? AND owner_id=?`,
+			in.Title, string(fj), in.Notes, in.Model, in.Favorite, contentHash(in.Title, in.Fields), now,
+			nullRating(in.Rating), int64(ml.SimHash(text)), ml.Language(text), in.SourceURL, in.VarsOff, id, sc.UserID)
 		if err != nil {
 			return err
 		}
-		if n, _ := res.RowsAffected(); n == 0 {
-			return store.ErrNotFound
-		}
 		if err := setProviders(ctx, tx, sc.UserID, id, provs); err != nil {
+			return err
+		}
+		if err := setLinks(ctx, tx, id, in.Links); err != nil {
 			return err
 		}
 		if err := tags.Set(ctx, tx, sc.UserID, id, in.Tags); err != nil {
@@ -241,6 +333,30 @@ func (s *Service) Update(ctx context.Context, sc store.Scope, id int64, in Input
 		}
 		return reindex(ctx, tx, id)
 	})
+}
+
+func nullRating(r int) any {
+	if r <= 0 {
+		return nil
+	}
+	return r
+}
+
+func validURL(u string) bool {
+	l := strings.ToLower(u)
+	return (strings.HasPrefix(l, "https://") || strings.HasPrefix(l, "http://")) && len(u) > 10 && !strings.ContainsAny(u, " \n\r\t<>\"")
+}
+
+func setLinks(ctx context.Context, tx *sql.Tx, id int64, links []Link) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM prompt_links WHERE prompt_id = ?", id); err != nil {
+		return err
+	}
+	for i, l := range links {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO prompt_links(prompt_id, label, url, position) VALUES (?,?,?,?)", id, l.Label, l.URL, i); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // setProviders ersetzt die Zuordnung, behält aber die Nutzungszähler bestehender Anbieter.
@@ -290,7 +406,13 @@ func reindex(ctx context.Context, tx *sql.Tx, id int64) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM prompt_fts WHERE rowid = ?", id); err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, "INSERT INTO prompt_fts(rowid, title, body, tags, notes) VALUES (?,?,?,?,?)", id, title, body.String(), tagText, notes)
+	if _, err := tx.ExecContext(ctx, "DELETE FROM prompt_trigram WHERE rowid = ?", id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO prompt_fts(rowid, title, body, tags, notes) VALUES (?,?,?,?,?)", id, title, body.String(), tagText, notes); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, "INSERT INTO prompt_trigram(rowid, title, body) VALUES (?,?,?)", id, title, body.String()+" "+tagText)
 	return err
 }
 
@@ -299,6 +421,9 @@ func (s *Service) Reindex(ctx context.Context) (int, error) {
 	n := 0
 	err := s.DB.Tx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM prompt_fts"); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM prompt_trigram"); err != nil {
 			return err
 		}
 		rows, err := tx.QueryContext(ctx, "SELECT id FROM prompts")
@@ -323,12 +448,16 @@ func (s *Service) Reindex(ctx context.Context) (int, error) {
 	return n, err
 }
 
-const promptCols = "p.id, p.owner_id, p.title, p.fields, p.notes, p.model, p.is_favorite, p.use_count, ifnull(p.last_used_at,0), p.created_at, p.updated_at, ifnull(p.deleted_at,0)"
+const promptCols = "p.id, p.owner_id, p.title, p.fields, p.notes, p.model, p.is_favorite, p.use_count, ifnull(p.last_used_at,0), p.created_at, p.updated_at, ifnull(p.deleted_at,0), " +
+	"ifnull(p.rating,0), p.simhash, p.language, p.source_url, p.vars_off"
 
 func scanPrompt(row interface{ Scan(...any) error }) (Prompt, error) {
 	var p Prompt
 	var fields string
-	err := row.Scan(&p.ID, &p.OwnerID, &p.Title, &fields, &p.Notes, &p.Model, &p.IsFavorite, &p.UseCount, &p.LastUsedAt, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt)
+	var sh int64
+	err := row.Scan(&p.ID, &p.OwnerID, &p.Title, &fields, &p.Notes, &p.Model, &p.IsFavorite, &p.UseCount, &p.LastUsedAt, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt,
+		&p.Rating, &sh, &p.Language, &p.SourceURL, &p.VarsOff)
+	p.SimHash = uint64(sh)
 	if err != nil {
 		return p, err
 	}
@@ -351,7 +480,20 @@ func (s *Service) Get(ctx context.Context, sc store.Scope, id int64) (Prompt, er
 	if err := s.attach(ctx, list); err != nil {
 		return p, err
 	}
-	return list[0], nil
+	p = list[0]
+	rows, err := s.DB.R.QueryContext(ctx, "SELECT label, url FROM prompt_links WHERE prompt_id = ? ORDER BY position", id)
+	if err != nil {
+		return p, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var l Link
+		if err := rows.Scan(&l.Label, &l.URL); err != nil {
+			return p, err
+		}
+		p.Links = append(p.Links, l)
+	}
+	return p, rows.Err()
 }
 
 // attach lädt Anbieter und Tags für eine Liste von Prompts in zwei Abfragen.
@@ -437,6 +579,9 @@ func (s *Service) Purge(ctx context.Context, sc store.Scope, id int64) error {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM prompt_fts WHERE rowid = ?", id); err != nil {
 			return err
 		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM prompt_trigram WHERE rowid = ?", id); err != nil {
+			return err
+		}
 		_, err = tx.ExecContext(ctx, `DELETE FROM tags WHERE owner_id = ? AND id NOT IN (SELECT tag_id FROM prompt_tags)`, sc.UserID)
 		return err
 	})
@@ -447,8 +592,10 @@ func (s *Service) PurgeExpired(ctx context.Context) (int64, error) {
 	cutoff := store.Now().Add(-TrashDays * 24 * time.Hour).Unix()
 	var n int64
 	err := s.DB.Tx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM prompt_fts WHERE rowid IN (SELECT id FROM prompts WHERE deleted_at IS NOT NULL AND deleted_at < ?)", cutoff); err != nil {
-			return err
+		for _, tbl := range []string{"prompt_fts", "prompt_trigram"} {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM "+tbl+" WHERE rowid IN (SELECT id FROM prompts WHERE deleted_at IS NOT NULL AND deleted_at < ?)", cutoff); err != nil {
+				return err
+			}
 		}
 		res, err := tx.ExecContext(ctx, "DELETE FROM prompts WHERE deleted_at IS NOT NULL AND deleted_at < ?", cutoff)
 		if err != nil {
@@ -539,9 +686,17 @@ type ExportPrompt struct {
 	Model     string            `json:"model,omitempty"`
 	Tags      []string          `json:"tags,omitempty"`
 	Favorite  bool              `json:"favorite,omitempty"`
+	Rating    int               `json:"rating,omitempty"`
+	Source    string            `json:"source,omitempty"`
+	Links     []ExportLink      `json:"links,omitempty"`
 	UseCount  int               `json:"use_count"`
 	Created   time.Time         `json:"created"`
 	Updated   time.Time         `json:"updated"`
+}
+
+type ExportLink struct {
+	Label string `json:"label,omitempty"`
+	URL   string `json:"url"`
 }
 
 // Export liefert alle nicht gelöschten Prompts des Benutzers.
@@ -565,8 +720,13 @@ func (s *Service) Export(ctx context.Context, sc store.Scope) ([]ExportPrompt, e
 	}
 	out := make([]ExportPrompt, 0, len(list))
 	for _, p := range list {
-		e := ExportPrompt{Title: p.Title, Fields: p.Fields, Notes: p.Notes, Model: p.Model, Tags: p.Tags,
+		e := ExportPrompt{Title: p.Title, Fields: p.Fields, Notes: p.Notes, Model: p.Model, Tags: p.Tags, Rating: p.Rating, Source: p.SourceURL,
 			Favorite: p.IsFavorite, UseCount: p.UseCount, Created: time.Unix(p.CreatedAt, 0).UTC(), Updated: time.Unix(p.UpdatedAt, 0).UTC()}
+		if full, err := s.Get(ctx, sc, p.ID); err == nil {
+			for _, l := range full.Links {
+				e.Links = append(e.Links, ExportLink{Label: l.Label, URL: l.URL})
+			}
+		}
 		for _, l := range p.Providers {
 			e.Providers = append(e.Providers, l.Slug)
 		}
